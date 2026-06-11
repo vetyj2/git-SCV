@@ -56,6 +56,102 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         errors.push("V06: 낮은 확신 표시 누락".into());
     }
 
+    let sensitive_paths = data
+        .sensitive
+        .candidates
+        .iter()
+        .map(|item| item.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let gate_sensitive_paths = data
+        .gates
+        .sensitive_candidates
+        .iter()
+        .map(|item| item.path.as_str())
+        .collect::<BTreeSet<_>>();
+    if sensitive_paths != gate_sensitive_paths {
+        errors.push("V07: 민감 후보 게이트 불일치".into());
+    }
+
+    let prompt_sensitive_paths = data
+        .gates
+        .sensitive_raw_review
+        .paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let execution_paths = data
+        .gates
+        .automatic_execution_candidates
+        .iter()
+        .chain(data.gates.execution_related_candidates.iter())
+        .map(|item| item.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let prompt_execution_paths = data
+        .gates
+        .execution_review
+        .paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if prompt_sensitive_paths != gate_sensitive_paths || prompt_execution_paths != execution_paths {
+        errors.push("V08: 승인 프롬프트 경로 불일치".into());
+    }
+
+    let inventory_files = data
+        .inventory
+        .entries
+        .iter()
+        .filter(|entry| entry.kind == crate::model::EntryKind::File)
+        .map(|entry| entry.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut unknown_slice_paths = Vec::new();
+    let mut unsafe_sensitive_slice_paths = Vec::new();
+    let mut slice_flag_mismatch = Vec::new();
+    for slice in &data.slices.slices {
+        let requires_sensitive = slice.files.iter().any(|file| file.sensitive_candidate);
+        let requires_execution = slice
+            .files
+            .iter()
+            .any(|file| file.automatic_execution_candidate || file.execution_related_candidate);
+        if slice.requires_sensitive_raw_approval != requires_sensitive
+            || slice.requires_execution_approval != requires_execution
+        {
+            slice_flag_mismatch.push(slice.id.as_str());
+        }
+        for file in &slice.files {
+            if !inventory_files.contains(file.path.as_str()) {
+                unknown_slice_paths.push(file.path.as_str());
+            }
+            if file.sensitive_candidate && file.default_model_input {
+                unsafe_sensitive_slice_paths.push(file.path.as_str());
+            }
+        }
+    }
+    if !unknown_slice_paths.is_empty() {
+        unknown_slice_paths.sort();
+        unknown_slice_paths.dedup();
+        errors.push(format!(
+            "V09: 인벤토리에 없는 슬라이스 경로: {}",
+            unknown_slice_paths.join(", ")
+        ));
+    }
+    if !unsafe_sensitive_slice_paths.is_empty() {
+        unsafe_sensitive_slice_paths.sort();
+        unsafe_sensitive_slice_paths.dedup();
+        errors.push(format!(
+            "V10: 민감 후보 기본 모델 입력 허용: {}",
+            unsafe_sensitive_slice_paths.join(", ")
+        ));
+    }
+    if !slice_flag_mismatch.is_empty() {
+        slice_flag_mismatch.sort();
+        slice_flag_mismatch.dedup();
+        errors.push(format!(
+            "V11: 슬라이스 승인 플래그 불일치: {}",
+            slice_flag_mismatch.join(", ")
+        ));
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
