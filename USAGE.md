@@ -58,6 +58,7 @@ gates.json
 slices.json
 review.json
 report.md
+report.html
 ```
 
 Use them in this order:
@@ -74,7 +75,8 @@ Use them in this order:
 9. `slices.json`: path-only reading slices derived from `sectors.json` and
    `gates.json`.
 10. `review.json`: machine-readable verdict, totals, and required actions.
-11. `report.md`: human-readable summary.
+11. `report.md`: human-readable Markdown summary.
+12. `report.html`: browser-friendly human-readable summary.
 
 ## Sensitive Candidates
 

@@ -20,3 +20,4 @@ pub mod slices;
 pub mod source;
 pub mod validate;
 pub mod walk;
+pub mod web_report;

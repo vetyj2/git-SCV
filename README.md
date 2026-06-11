@@ -58,6 +58,7 @@ gates.json
 slices.json
 review.json
 report.md
+report.html
 ```
 
 ## Recommended Workflow
@@ -76,9 +77,10 @@ repository.
 7. Use `slices.json` as a path-only reading plan for later model input.
 8. Use `review.json` for machine-readable totals, verdict, and required
    actions.
-9. Treat `secret-candidate` findings as unresolved review items, not as safe or
+9. Open `report.html` when a browser-friendly run report is useful.
+10. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-10. Ask for explicit approval before running install, build, test, script, hook,
+11. Ask for explicit approval before running install, build, test, script, hook,
    binary, or container commands from the inspected repository.
 
 ## Sensitive Candidates
