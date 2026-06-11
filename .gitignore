@@ -1,0 +1,22 @@
+/target/
+
+.DS_Store
+*.log
+.claude/
+/local/
+
+.env
+.env.*
+!.env.example
+
+/test-candi/
+/test-run/
+/scv-run/
+/scv-runs/
+
+# Local planning, specs, fixtures, and coordination notes.
+/docs/
+/tests/
+/REQ.md
+/HANDOFF.md
+/CONTRIBUTING.md

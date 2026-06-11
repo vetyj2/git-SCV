@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: 서식
+        run: cargo fmt --check
+      - name: 정적 경고 (제품 코드 무경고)
+        run: cargo clippy --lib --bins -- -D warnings
+      - name: 시험
+        run: cargo test
