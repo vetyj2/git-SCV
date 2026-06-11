@@ -1,7 +1,7 @@
 //! 사람용 리포트.
 //! 마지막 무실행 문장은 model::NO_EXEC_SENTENCE 상수를 쓴다.
 
-use crate::model::{GitInfo, Priority, RunData, NO_EXEC_SENTENCE};
+use crate::model::{GitInfo, Priority, RunData, SensitiveReviewMode, NO_EXEC_SENTENCE};
 
 pub fn render(data: &RunData) -> String {
     let findings = if data.findings.findings.is_empty() {
@@ -42,6 +42,11 @@ pub fn render(data: &RunData) -> String {
 - 발견 항목: {discovered} / 나열: {listed} / 건너뜀: {skipped}\n\
 - 내용을 읽은 파일: {files_read}개, {bytes_read_total}바이트\n\
 - 정책: 무시 규칙 미적용, 심볼릭 링크 미추적, 탐색 한도 없음\n\n\
+## 민감 후보 처리\n\n\
+- 모드: {sensitive_mode}\n\
+- 후보: {sensitive_candidates}개 / 원문 승인 경로: {approved_paths}개\n\
+- 원문 저장: 없음\n\
+- 메모: {sensitive_note}\n\n\
 ## 발견사항\n\n\
 {findings}\n\
 ## 한계\n\n\
@@ -60,6 +65,10 @@ pub fn render(data: &RunData) -> String {
         skipped = data.inventory.totals.skipped,
         files_read = data.coverage.files_read,
         bytes_read_total = data.coverage.bytes_read_total,
+        sensitive_mode = sensitive_mode_label(data.sensitive.mode),
+        sensitive_candidates = data.sensitive.candidates.len(),
+        approved_paths = data.sensitive.approved_paths.len(),
+        sensitive_note = data.sensitive.note.as_str(),
         findings = findings,
         limitations = limitations,
     )
@@ -93,5 +102,13 @@ fn priority_label(priority: Priority) -> &'static str {
         Priority::Low => "낮음",
         Priority::Medium => "중간",
         Priority::High => "높음",
+    }
+}
+
+fn sensitive_mode_label(mode: SensitiveReviewMode) -> &'static str {
+    match mode {
+        SensitiveReviewMode::Exclude => "제외",
+        SensitiveReviewMode::RedactedSummary => "가린 요약",
+        SensitiveReviewMode::ApprovedRaw => "승인 원문",
     }
 }

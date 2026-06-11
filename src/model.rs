@@ -356,6 +356,52 @@ pub struct SectorsArtifact {
     pub note: String,
 }
 
+// --------------------------------------------------------- sensitive.json
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+#[value(rename_all = "kebab-case")]
+pub enum SensitiveReviewMode {
+    Exclude,
+    RedactedSummary,
+    ApprovedRaw,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "kebab-case")]
+pub enum SensitiveReadStatus {
+    NotRead,
+    MetadataOnly,
+    Read,
+    Binary,
+    Unreadable,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SensitiveCandidate {
+    pub path: String,
+    pub size: Option<u64>,
+    pub approved_for_raw: bool,
+    pub raw_read: bool,
+    pub read_status: SensitiveReadStatus,
+    pub summary: String,
+    pub signals: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SensitiveArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub mode: SensitiveReviewMode,
+    pub first_approval: bool,
+    pub second_approval: bool,
+    pub approved_paths: Vec<String>,
+    pub unapproved_paths: Vec<String>,
+    pub candidates: Vec<SensitiveCandidate>,
+    pub raw_content_stored: bool,
+    pub note: String,
+}
+
 // ------------------------------------------------- 감지 단계의 중간 데이터
 
 /// Detection rule id.
@@ -412,5 +458,6 @@ pub struct RunData {
     pub evidence: EvidenceArtifact,
     pub findings: FindingsArtifact,
     pub sectors: SectorsArtifact,
+    pub sensitive: SensitiveArtifact,
     pub report_md: String,
 }

@@ -30,8 +30,10 @@ repository.
 3. Open `coverage.json` to understand what was listed, read, skipped, or left
    unknown.
 4. Open `findings.json` and follow each evidence ID into `evidence.json`.
-5. Treat `secret-candidate` findings as unresolved review items.
-6. Ask for explicit approval before running any install, build, test, script,
+5. Open `sensitive.json` and confirm whether sensitive candidates were excluded,
+   summarized, or path-approved for raw review.
+6. Treat `secret-candidate` findings as unresolved review items.
+7. Ask for explicit approval before running any install, build, test, script,
    hook, binary, or container command from the inspected repository.
 
 ## Artifact Files
@@ -46,6 +48,7 @@ coverage.json
 evidence.json
 findings.json
 sectors.json
+sensitive.json
 report.md
 ```
 
@@ -57,7 +60,9 @@ Use them in this order:
 4. `findings.json`: review items and limitations.
 5. `evidence.json`: evidence records referenced by findings.
 6. `sectors.json`: suggested reading plan for deeper manual review.
-7. `report.md`: human-readable summary.
+7. `sensitive.json`: sensitive-candidate mode, approvals, candidates, and
+   redacted review signals.
+8. `report.md`: human-readable summary.
 
 ## Sensitive Candidates
 
@@ -76,7 +81,36 @@ sensitive-looking filename. For example, a file such as `.env.sh` should remain
 both a sensitive candidate and a shell-script review item.
 
 Raw-content analysis of sensitive candidates must happen outside the default
-inspection and should require explicit, path-specific user approval.
+inspection and requires explicit, path-specific approval.
+
+Sensitive-candidate review modes:
+
+```sh
+git-scv inspect <repo-path> --out <run-dir>
+```
+
+Default mode. Sensitive candidates are listed but not read.
+
+```sh
+git-scv inspect <repo-path> --out <run-dir> \
+  --sensitive-mode redacted-summary \
+  --approve-sensitive-review
+```
+
+Redacted summary mode. Git-SCV records path, size, and name-based metadata only.
+It does not read candidate contents.
+
+```sh
+git-scv inspect <repo-path> --out <run-dir> \
+  --sensitive-mode approved-raw \
+  --approve-sensitive-review \
+  --approve-sensitive-raw \
+  --sensitive-path <repo-relative-path>
+```
+
+Approved raw mode. Git-SCV reads only the listed candidate path or paths. It
+records static signal labels such as script markers or command-token presence
+and does not store raw candidate contents in artifacts.
 
 ## Interpreting Findings
 

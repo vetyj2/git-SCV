@@ -120,6 +120,25 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
         limitations,
     };
     let sectors = crate::sectors::build(&inventory, &detect_outcome.detections, &run_id);
+    let sensitive =
+        match crate::sensitive::build(&inventory, &detect_outcome.detections, root, &args, &run_id)
+        {
+            Ok(value) => {
+                mark_ok(&mut stages, "sensitive");
+                value
+            }
+            Err(err) => {
+                return fail(
+                    &args.out,
+                    &run_id,
+                    &command,
+                    &started_at,
+                    stages,
+                    "sensitive",
+                    err,
+                )
+            }
+        };
     let finished_at = format_rfc3339(OffsetDateTime::now_utc());
 
     let mut data = RunData {
@@ -133,6 +152,7 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
         evidence,
         findings,
         sectors,
+        sensitive,
         report_md: String::new(),
     };
     data.report_md = crate::report::render(&data);
@@ -257,6 +277,7 @@ fn initial_stages() -> Vec<StageRecord> {
         "detect",
         "evidence",
         "findings",
+        "sensitive",
         "validate",
         "artifacts",
         "report",

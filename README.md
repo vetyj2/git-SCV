@@ -53,6 +53,7 @@ coverage.json
 evidence.json
 findings.json
 sectors.json
+sensitive.json
 report.md
 ```
 
@@ -66,9 +67,11 @@ repository.
 3. Check `coverage.json` to see what was inspected, skipped, or left unknown.
 4. For each finding, follow the evidence IDs from `findings.json` to
    `evidence.json`.
-5. Treat `secret-candidate` findings as unresolved review items, not as safe or
+5. Check `sensitive.json` before model input, install, build, test, or run
+   approval.
+6. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-6. Ask for explicit approval before running install, build, test, script, hook,
+7. Ask for explicit approval before running install, build, test, script, hook,
    binary, or container commands from the inspected repository.
 
 ## Sensitive Candidates
@@ -79,9 +82,16 @@ inspection reports those paths without reading or copying their contents.
 
 Sensitive candidates are not ignored and are not treated as safe. They are
 reported as unresolved review items, especially when a repository might hide an
-executable script behind a sensitive-looking name. Any later raw-content
-analysis should require explicit, path-specific user approval outside the
-default inspection.
+executable script behind a sensitive-looking name.
+
+Optional sensitive-candidate review modes are explicit:
+
+- `--sensitive-mode redacted-summary --approve-sensitive-review` records only
+  path, size, and name-based metadata.
+- `--sensitive-mode approved-raw` with `--approve-sensitive-review`,
+  `--approve-sensitive-raw`, and `--sensitive-path <repo-relative-path>` reads
+  only the listed candidate paths, records static signal labels, and still
+  never stores raw sensitive contents in artifacts.
 
 ## Status
 

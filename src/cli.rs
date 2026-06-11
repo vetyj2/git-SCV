@@ -2,9 +2,10 @@
 //! 인자 구조와 도움말은 고정되어 있고, 입력 검증은 구현 대기 상태다.
 
 use crate::errors::ScvError;
+use crate::model::SensitiveReviewMode;
 use clap::Parser;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// 도움말 고정 문구.
 pub const NO_EXEC_HELP: &str = "git-scv는 대상 저장소의 어떤 명령, 스크립트, 훅도 실행하지 않는다.";
@@ -35,6 +36,18 @@ pub struct InspectArgs {
     /// 산출물을 쓸 디렉터리 (새 경로 또는 빈 디렉터리)
     #[arg(long)]
     pub out: PathBuf,
+    /// 민감 후보 별도 진단 모드
+    #[arg(long, value_enum, default_value = "exclude")]
+    pub sensitive_mode: SensitiveReviewMode,
+    /// 민감 후보 별도 진단 1차 승인
+    #[arg(long)]
+    pub approve_sensitive_review: bool,
+    /// 승인 경로 원문 분석 2차 승인
+    #[arg(long)]
+    pub approve_sensitive_raw: bool,
+    /// 원문 분석을 승인할 저장소 상대 경로
+    #[arg(long = "sensitive-path")]
+    pub sensitive_paths: Vec<PathBuf>,
 }
 
 pub fn parse() -> InspectArgs {
@@ -79,6 +92,8 @@ pub fn validate(args: &InspectArgs) -> Result<(), ScvError> {
             args.out.display()
         ));
     }
+
+    validate_sensitive_args(args)?;
 
     Ok(())
 }
@@ -140,4 +155,67 @@ fn canonical_existing_anchor(path: &Path) -> Result<PathBuf, ScvError> {
             path.display()
         ))
     })
+}
+
+fn validate_sensitive_args(args: &InspectArgs) -> Result<(), ScvError> {
+    for path in &args.sensitive_paths {
+        if !is_clean_repo_relative_path(path) {
+            return usage(format!(
+                "오류: 민감 후보 승인 경로는 저장소 상대 경로여야 한다: {}",
+                path.display()
+            ));
+        }
+    }
+
+    match args.sensitive_mode {
+        SensitiveReviewMode::Exclude => {
+            if args.approve_sensitive_review
+                || args.approve_sensitive_raw
+                || !args.sensitive_paths.is_empty()
+            {
+                return usage(
+                    "오류: exclude 모드에서는 민감 후보 승인 옵션을 함께 쓸 수 없다.".into(),
+                );
+            }
+        }
+        SensitiveReviewMode::RedactedSummary => {
+            if !args.approve_sensitive_review {
+                return usage(
+                    "오류: redacted-summary 모드는 --approve-sensitive-review 1차 승인이 필요하다."
+                        .into(),
+                );
+            }
+            if args.approve_sensitive_raw || !args.sensitive_paths.is_empty() {
+                return usage("오류: 원문 승인 옵션은 approved-raw 모드에서만 쓸 수 있다.".into());
+            }
+        }
+        SensitiveReviewMode::ApprovedRaw => {
+            if !args.approve_sensitive_review || !args.approve_sensitive_raw {
+                return usage(
+                    "오류: approved-raw 모드는 --approve-sensitive-review 와 --approve-sensitive-raw 2중 승인이 필요하다."
+                        .into(),
+                );
+            }
+            if args.sensitive_paths.is_empty() {
+                return usage(
+                    "오류: approved-raw 모드는 --sensitive-path 승인 경로가 하나 이상 필요하다."
+                        .into(),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn is_clean_repo_relative_path(path: &Path) -> bool {
+    let mut saw_normal = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => saw_normal = true,
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return false,
+        }
+    }
+    saw_normal
 }
