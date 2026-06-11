@@ -322,6 +322,10 @@ impl Finding {
         self.priority
     }
 
+    pub fn category(&self) -> Category {
+        self.category
+    }
+
     pub fn summary(&self) -> &str {
         &self.summary
     }
@@ -470,6 +474,39 @@ pub struct SliceArtifact {
     pub note: String,
 }
 
+// ------------------------------------------------------------- review.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ReviewCounts {
+    pub findings_total: u64,
+    pub high_priority_findings: u64,
+    pub medium_priority_findings: u64,
+    pub sensitive_candidates: u64,
+    pub automatic_execution_candidates: u64,
+    pub execution_related_candidates: u64,
+    pub slices_total: u64,
+    pub slices_over_token_limit: u64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ReviewAction {
+    pub id: String,
+    pub required: bool,
+    pub reason: String,
+    pub paths: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ReviewArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub verdict: String,
+    pub counts: ReviewCounts,
+    pub required_actions: Vec<ReviewAction>,
+    pub default_model_excluded_paths: Vec<String>,
+    pub note: String,
+}
+
 // ------------------------------------------------- 감지 단계의 중간 데이터
 
 /// Detection rule id.
@@ -529,5 +566,6 @@ pub struct RunData {
     pub sensitive: SensitiveArtifact,
     pub gates: GateArtifact,
     pub slices: SliceArtifact,
+    pub review: ReviewArtifact,
     pub report_md: String,
 }

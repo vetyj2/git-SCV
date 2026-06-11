@@ -12,6 +12,7 @@ pub mod gates;
 pub mod inspect;
 pub mod model;
 pub mod report;
+pub mod review;
 pub mod safety;
 pub mod sectors;
 pub mod sensitive;
