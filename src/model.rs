@@ -404,6 +404,7 @@ pub struct DetectOutcome {
 pub struct RunData {
     pub run_id: String,
     pub started_at: String,
+    pub finished_at: String,
     pub command: Vec<String>,
     pub source: SourceArtifact,
     pub inventory: InventoryArtifact,

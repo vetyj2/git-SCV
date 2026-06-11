@@ -12,7 +12,6 @@ use crate::model::{
 };
 use std::fs;
 use std::path::Path;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 pub fn run(args: InspectArgs) -> Result<(), ScvError> {
@@ -121,10 +120,12 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
         limitations,
     };
     let sectors = crate::sectors::build(&inventory, &detect_outcome.detections, &run_id);
+    let finished_at = format_rfc3339(OffsetDateTime::now_utc());
 
     let mut data = RunData {
         run_id: run_id.clone(),
         started_at: started_at.clone(),
+        finished_at,
         command: command.clone(),
         source,
         inventory,
@@ -330,8 +331,15 @@ fn run_artifact(
 }
 
 fn format_rfc3339(time: OffsetDateTime) -> String {
-    time.format(&Rfc3339)
-        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        time.year(),
+        u8::from(time.month()),
+        time.day(),
+        time.hour(),
+        time.minute(),
+        time.second()
+    )
 }
 
 fn format_run_id(time: OffsetDateTime) -> String {

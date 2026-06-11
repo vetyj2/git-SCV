@@ -51,7 +51,7 @@ pub fn render(data: &RunData) -> String {
         run_id = data.run_id.as_str(),
         version = env!("CARGO_PKG_VERSION"),
         started_at = data.started_at.as_str(),
-        finished_at = data.started_at.as_str(),
+        finished_at = data.finished_at.as_str(),
         input = data.source.input.raw.as_str(),
         resolved = data.source.resolved_path.as_str(),
         git = git_summary(data.source.git.as_ref()),
