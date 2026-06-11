@@ -29,13 +29,36 @@ impl EvidenceStore {
         summary: &str,
         excerpt: Option<&str>,
     ) -> String {
-        let _ = (path, kind, lines, summary, excerpt);
-        todo!("evidence generation is not implemented yet")
+        let id = format!("E{:04}", self.items.len() + 1);
+        let normalized_lines = if kind == EvidenceKind::ContentLine {
+            lines
+        } else {
+            None
+        };
+        let normalized_excerpt = if kind == EvidenceKind::SecretName {
+            None
+        } else {
+            excerpt.map(|value| value.chars().take(200).collect())
+        };
+
+        self.items.push(Evidence {
+            id: id.clone(),
+            path: path.into(),
+            kind,
+            lines: normalized_lines,
+            summary: summary.into(),
+            excerpt: normalized_excerpt,
+        });
+
+        id
     }
 
     pub fn into_artifact(self, run_id: &str) -> EvidenceArtifact {
-        let _ = run_id;
-        todo!("evidence artifact generation is not implemented yet")
+        EvidenceArtifact {
+            schema_version: crate::model::SCHEMA_VERSION.into(),
+            run_id: run_id.into(),
+            evidence: self.items,
+        }
     }
 
     pub fn len(&self) -> usize {

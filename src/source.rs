@@ -5,7 +5,8 @@
 //! `<root>/.git` 이 있을 때만 깃 저장소다.
 
 use crate::errors::ScvError;
-use crate::model::SourceArtifact;
+use crate::model::{GitInfo, GitRemote, InputInfo, SourceArtifact, SCHEMA_VERSION};
+use std::fs;
 use std::path::Path;
 
 /// 반환값의 `git` 필드: 깃 저장소가 아니면 None.
@@ -16,6 +17,90 @@ pub fn identify(
     root: &Path,
     run_id: &str,
 ) -> Result<(SourceArtifact, /* dirty_unknown */ bool), ScvError> {
-    let _ = (raw_input, root, run_id);
-    todo!("source identification is not implemented yet")
+    let resolved = fs::canonicalize(root).map_err(|err| {
+        ScvError::Inspect(format!(
+            "source: 검사 대상 경로를 정규화하지 못했다: {}: {err}",
+            root.display()
+        ))
+    })?;
+    let git_dir = resolved.join(".git");
+    let (git, dirty_unknown) = if git_dir.exists() {
+        identify_git(&resolved)
+    } else {
+        (None, false)
+    };
+
+    Ok((
+        SourceArtifact {
+            schema_version: SCHEMA_VERSION.into(),
+            run_id: run_id.into(),
+            input: InputInfo {
+                raw: raw_input.into(),
+                kind: "local-path".into(),
+            },
+            resolved_path: resolved.display().to_string(),
+            git,
+            snapshot: None,
+        },
+        dirty_unknown,
+    ))
+}
+
+fn identify_git(root: &Path) -> (Option<GitInfo>, bool) {
+    let Ok(repo) = gix::open(root) else {
+        return (None, false);
+    };
+
+    let branch = repo
+        .head_name()
+        .ok()
+        .flatten()
+        .map(|name| name.shorten().to_string());
+    let commit = repo.head_id().ok().map(|id| id.to_string());
+    let detached = branch.is_none() && commit.is_some();
+    let (dirty, dirty_unknown) = match repo.is_dirty() {
+        Ok(value) => (Some(value), false),
+        Err(_) => (None, true),
+    };
+    let mut remotes = repo
+        .remote_names()
+        .iter()
+        .filter_map(|name| {
+            let remote = repo.find_remote(name.as_ref()).ok()?;
+            let url = remote.url(gix::remote::Direction::Fetch)?;
+            Some(GitRemote {
+                name: name.to_string(),
+                url: redact_remote_url(&url.to_bstring().to_string()),
+            })
+        })
+        .collect::<Vec<_>>();
+    remotes.sort_by(|left, right| left.name.cmp(&right.name));
+
+    (
+        Some(GitInfo {
+            is_repo: true,
+            branch,
+            commit,
+            detached,
+            dirty,
+            remotes,
+        }),
+        dirty_unknown,
+    )
+}
+
+fn redact_remote_url(url: &str) -> String {
+    let Some(scheme_end) = url.find("://") else {
+        return url.into();
+    };
+    let authority_start = scheme_end + 3;
+    let path_start = url[authority_start..]
+        .find('/')
+        .map(|pos| authority_start + pos)
+        .unwrap_or(url.len());
+    let Some(at_offset) = url[authority_start..path_start].find('@') else {
+        return url.into();
+    };
+    let at = authority_start + at_offset;
+    format!("{}***@{}", &url[..authority_start], &url[at + 1..])
 }
