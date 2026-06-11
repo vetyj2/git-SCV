@@ -8,6 +8,7 @@ pub mod detect;
 pub mod errors;
 pub mod evidence;
 pub mod findings;
+pub mod gates;
 pub mod inspect;
 pub mod model;
 pub mod report;

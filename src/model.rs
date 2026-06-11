@@ -402,6 +402,34 @@ pub struct SensitiveArtifact {
     pub note: String,
 }
 
+// ------------------------------------------------------------- gates.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GatePrompt {
+    pub approval_required: bool,
+    pub message: String,
+    pub paths: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GateItem {
+    pub path: String,
+    pub rule: String,
+    pub reason: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GateArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub sensitive_raw_review: GatePrompt,
+    pub execution_review: GatePrompt,
+    pub sensitive_candidates: Vec<GateItem>,
+    pub automatic_execution_candidates: Vec<GateItem>,
+    pub execution_related_candidates: Vec<GateItem>,
+    pub note: String,
+}
+
 // ------------------------------------------------- 감지 단계의 중간 데이터
 
 /// Detection rule id.
@@ -459,5 +487,6 @@ pub struct RunData {
     pub findings: FindingsArtifact,
     pub sectors: SectorsArtifact,
     pub sensitive: SensitiveArtifact,
+    pub gates: GateArtifact,
     pub report_md: String,
 }

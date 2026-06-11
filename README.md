@@ -54,6 +54,7 @@ evidence.json
 findings.json
 sectors.json
 sensitive.json
+gates.json
 report.md
 ```
 
@@ -67,11 +68,12 @@ repository.
 3. Check `coverage.json` to see what was inspected, skipped, or left unknown.
 4. For each finding, follow the evidence IDs from `findings.json` to
    `evidence.json`.
-5. Check `sensitive.json` before model input, install, build, test, or run
+5. Check `sensitive.json` before raw sensitive-candidate review.
+6. Check `gates.json` before model input, install, build, test, or run
    approval.
-6. Treat `secret-candidate` findings as unresolved review items, not as safe or
+7. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-7. Ask for explicit approval before running install, build, test, script, hook,
+8. Ask for explicit approval before running install, build, test, script, hook,
    binary, or container commands from the inspected repository.
 
 ## Sensitive Candidates

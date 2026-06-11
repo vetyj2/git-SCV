@@ -47,6 +47,10 @@ pub fn render(data: &RunData) -> String {
 - 후보: {sensitive_candidates}개 / 원문 승인 경로: {approved_paths}개\n\
 - 원문 저장: 없음\n\
 - 메모: {sensitive_note}\n\n\
+## 승인 게이트\n\n\
+- 민감 후보 원문 승인 필요: {sensitive_gate}\n\
+- 실행 승인 필요: {execution_gate}\n\
+- 자동 실행 후보: {auto_exec_count}개 / 실행 관련 후보: {execution_related_count}개\n\n\
 ## 발견사항\n\n\
 {findings}\n\
 ## 한계\n\n\
@@ -69,6 +73,10 @@ pub fn render(data: &RunData) -> String {
         sensitive_candidates = data.sensitive.candidates.len(),
         approved_paths = data.sensitive.approved_paths.len(),
         sensitive_note = data.sensitive.note.as_str(),
+        sensitive_gate = yes_no(data.gates.sensitive_raw_review.approval_required),
+        execution_gate = yes_no(data.gates.execution_review.approval_required),
+        auto_exec_count = data.gates.automatic_execution_candidates.len(),
+        execution_related_count = data.gates.execution_related_candidates.len(),
         findings = findings,
         limitations = limitations,
     )
@@ -110,5 +118,13 @@ fn sensitive_mode_label(mode: SensitiveReviewMode) -> &'static str {
         SensitiveReviewMode::Exclude => "제외",
         SensitiveReviewMode::RedactedSummary => "가린 요약",
         SensitiveReviewMode::ApprovedRaw => "승인 원문",
+    }
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "예"
+    } else {
+        "아니오"
     }
 }

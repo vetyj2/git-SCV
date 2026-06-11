@@ -1,7 +1,7 @@
 //! 산출물 기록.
 //!
 //! 쓰기 순서 고정: source → inventory → coverage → evidence → findings →
-//! sectors → sensitive → report.md. run.json 은 별도 함수로, 항상 마지막에(0202).
+//! sectors → sensitive → gates → report.md. run.json 은 별도 함수로, 항상 마지막에(0202).
 //! 모든 쓰기 직전에 safety::assert_inside 를 호출한다(1105).
 //! JSON 은 to_string_pretty + 끝 줄바꿈 하나.
 
@@ -20,6 +20,7 @@ pub fn write_all(out: &Path, data: &RunData) -> Result<(), ScvError> {
     write_json(out, "findings.json", &data.findings)?;
     write_json(out, "sectors.json", &data.sectors)?;
     write_json(out, "sensitive.json", &data.sensitive)?;
+    write_json(out, "gates.json", &data.gates)?;
     write_text(out, "report.md", &data.report_md)
 }
 

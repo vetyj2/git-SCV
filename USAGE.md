@@ -32,8 +32,10 @@ repository.
 4. Open `findings.json` and follow each evidence ID into `evidence.json`.
 5. Open `sensitive.json` and confirm whether sensitive candidates were excluded,
    summarized, or path-approved for raw review.
-6. Treat `secret-candidate` findings as unresolved review items.
-7. Ask for explicit approval before running any install, build, test, script,
+6. Open `gates.json` before model input or any install, build, test, script,
+   hook, binary, or container approval request.
+7. Treat `secret-candidate` findings as unresolved review items.
+8. Ask for explicit approval before running any install, build, test, script,
    hook, binary, or container command from the inspected repository.
 
 ## Artifact Files
@@ -49,6 +51,7 @@ evidence.json
 findings.json
 sectors.json
 sensitive.json
+gates.json
 report.md
 ```
 
@@ -62,7 +65,8 @@ Use them in this order:
 6. `sectors.json`: suggested reading plan for deeper manual review.
 7. `sensitive.json`: sensitive-candidate mode, approvals, candidates, and
    redacted review signals.
-8. `report.md`: human-readable summary.
+8. `gates.json`: sensitive raw-review and execution approval candidate lists.
+9. `report.md`: human-readable summary.
 
 ## Sensitive Candidates
 
