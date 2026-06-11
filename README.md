@@ -35,6 +35,9 @@ cargo build
 git-scv inspect <repo-path> --out <run-dir>
 ```
 
+For the recommended review flow and artifact reading order, see
+[USAGE.md](USAGE.md).
+
 The output directory must be new or empty. Git-SCV does not execute install,
 build, test, script, hook, binary, or container commands from the inspected
 repository.
