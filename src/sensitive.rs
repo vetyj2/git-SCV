@@ -201,6 +201,43 @@ fn classify_approved_bytes(bytes: &[u8]) -> (SensitiveReadStatus, Vec<String>) {
     ) {
         signals.push("dynamic-execution-token".into());
     }
+    if contains_any(
+        &lower,
+        &[
+            "child_process",
+            "process.env",
+            "npm install",
+            "yarn install",
+        ],
+    ) {
+        signals.push("node-execution-token".into());
+    }
+    if contains_any(
+        &lower,
+        &[
+            "subprocess.",
+            "os.system",
+            "os.popen",
+            "urllib.request",
+            "requests.",
+        ],
+    ) {
+        signals.push("python-execution-token".into());
+    }
+    if contains_any(
+        &lower,
+        &[
+            "invoke-webrequest",
+            "invoke-expression",
+            "start-process",
+            "encodedcommand",
+        ],
+    ) {
+        signals.push("powershell-execution-token".into());
+    }
+    if contains_any(&lower, &["net::http", "open3.", "kernel.system", "`"]) {
+        signals.push("ruby-execution-token".into());
+    }
     if lower.contains("base64") {
         signals.push("base64-token".into());
     }

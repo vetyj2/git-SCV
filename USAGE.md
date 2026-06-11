@@ -118,7 +118,8 @@ git-scv inspect <repo-path> --out <run-dir> \
 
 Approved raw mode. Git-SCV reads only the listed candidate path or paths. It
 records static signal labels such as script markers or command-token presence
-and does not store raw candidate contents in artifacts.
+including common shell, Node, Python, PowerShell, and Ruby execution tokens. It
+does not store raw candidate contents in artifacts.
 
 Each `--sensitive-path` value must be a repository-relative path that Git-SCV
 detected as a sensitive candidate in the same run. Other paths are rejected so a
