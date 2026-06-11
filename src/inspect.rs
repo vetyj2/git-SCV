@@ -7,6 +7,7 @@ use crate::cli::InspectArgs;
 use crate::errors::ScvError;
 
 pub fn run(args: InspectArgs) -> Result<(), ScvError> {
+    crate::cli::validate(&args)?;
     let _ = args;
     todo!("inspect flow is not implemented yet")
 }

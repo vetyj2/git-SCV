@@ -22,7 +22,12 @@ impl ScvError {
     pub fn user_message(&self) -> String {
         match self {
             ScvError::Usage(msg) => msg.clone(),
-            ScvError::Inspect(msg) => format!("오류: 검사 실패({msg})"),
+            ScvError::Inspect(msg) => match msg.split_once(':') {
+                Some((stage, reason)) => {
+                    format!("오류: 검사 실패({}): {}", stage.trim(), reason.trim())
+                }
+                None => format!("오류: 검사 실패: {msg}"),
+            },
             ScvError::Validation(items) => {
                 let ids: Vec<&str> = items
                     .iter()
