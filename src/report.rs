@@ -51,6 +51,11 @@ pub fn render(data: &RunData) -> String {
 - 민감 후보 원문 승인 필요: {sensitive_gate}\n\
 - 실행 승인 필요: {execution_gate}\n\
 - 자동 실행 후보: {auto_exec_count}개 / 실행 관련 후보: {execution_related_count}개\n\n\
+## 읽기 슬라이스\n\n\
+- 슬라이스: {slice_count}개\n\
+- 슬라이스당 최대 추정 토큰: {slice_limit}\n\
+- 한도 초과 단일 파일 슬라이스: {over_limit_slices}개\n\
+- 기본 모델 입력 정책: 민감 후보 제외\n\n\
 ## 발견사항\n\n\
 {findings}\n\
 ## 한계\n\n\
@@ -77,6 +82,14 @@ pub fn render(data: &RunData) -> String {
         execution_gate = yes_no(data.gates.execution_review.approval_required),
         auto_exec_count = data.gates.automatic_execution_candidates.len(),
         execution_related_count = data.gates.execution_related_candidates.len(),
+        slice_count = data.slices.slices.len(),
+        slice_limit = data.slices.policy.max_estimated_tokens_per_slice,
+        over_limit_slices = data
+            .slices
+            .slices
+            .iter()
+            .filter(|slice| slice.over_token_limit)
+            .count(),
         findings = findings,
         limitations = limitations,
     )

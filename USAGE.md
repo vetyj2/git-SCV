@@ -34,8 +34,9 @@ repository.
    summarized, or path-approved for raw review.
 6. Open `gates.json` before model input or any install, build, test, script,
    hook, binary, or container approval request.
-7. Treat `secret-candidate` findings as unresolved review items.
-8. Ask for explicit approval before running any install, build, test, script,
+7. Use `slices.json` as the path-only reading plan for later model input.
+8. Treat `secret-candidate` findings as unresolved review items.
+9. Ask for explicit approval before running any install, build, test, script,
    hook, binary, or container command from the inspected repository.
 
 ## Artifact Files
@@ -52,6 +53,7 @@ findings.json
 sectors.json
 sensitive.json
 gates.json
+slices.json
 report.md
 ```
 
@@ -66,7 +68,9 @@ Use them in this order:
 7. `sensitive.json`: sensitive-candidate mode, approvals, candidates, and
    redacted review signals.
 8. `gates.json`: sensitive raw-review and execution approval candidate lists.
-9. `report.md`: human-readable summary.
+9. `slices.json`: path-only reading slices derived from `sectors.json` and
+   `gates.json`.
+10. `report.md`: human-readable summary.
 
 ## Sensitive Candidates
 

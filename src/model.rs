@@ -430,6 +430,46 @@ pub struct GateArtifact {
     pub note: String,
 }
 
+// ------------------------------------------------------------ slices.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SlicePolicy {
+    pub source_order: String,
+    pub max_estimated_tokens_per_slice: u64,
+    pub default_model_input: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SliceFile {
+    pub path: String,
+    pub bytes: u64,
+    pub estimated_tokens: u64,
+    pub sector: String,
+    pub default_model_input: bool,
+    pub sensitive_candidate: bool,
+    pub automatic_execution_candidate: bool,
+    pub execution_related_candidate: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Slice {
+    pub id: String,
+    pub files: Vec<SliceFile>,
+    pub estimated_tokens: u64,
+    pub over_token_limit: bool,
+    pub requires_sensitive_raw_approval: bool,
+    pub requires_execution_approval: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SliceArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub policy: SlicePolicy,
+    pub slices: Vec<Slice>,
+    pub note: String,
+}
+
 // ------------------------------------------------- 감지 단계의 중간 데이터
 
 /// Detection rule id.
@@ -488,5 +528,6 @@ pub struct RunData {
     pub sectors: SectorsArtifact,
     pub sensitive: SensitiveArtifact,
     pub gates: GateArtifact,
+    pub slices: SliceArtifact,
     pub report_md: String,
 }

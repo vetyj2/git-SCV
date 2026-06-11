@@ -140,6 +140,7 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
             }
         };
     let gates = crate::gates::build(&detect_outcome.detections, &sensitive, &run_id);
+    let slices = crate::slices::build(&inventory, &sectors, &gates, &run_id);
     let finished_at = format_rfc3339(OffsetDateTime::now_utc());
 
     let mut data = RunData {
@@ -155,6 +156,7 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
         sectors,
         sensitive,
         gates,
+        slices,
         report_md: String::new(),
     };
     data.report_md = crate::report::render(&data);

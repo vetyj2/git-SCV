@@ -55,6 +55,7 @@ findings.json
 sectors.json
 sensitive.json
 gates.json
+slices.json
 report.md
 ```
 
@@ -71,9 +72,10 @@ repository.
 5. Check `sensitive.json` before raw sensitive-candidate review.
 6. Check `gates.json` before model input, install, build, test, or run
    approval.
-7. Treat `secret-candidate` findings as unresolved review items, not as safe or
+7. Use `slices.json` as a path-only reading plan for later model input.
+8. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-8. Ask for explicit approval before running install, build, test, script, hook,
+9. Ask for explicit approval before running install, build, test, script, hook,
    binary, or container commands from the inspected repository.
 
 ## Sensitive Candidates
