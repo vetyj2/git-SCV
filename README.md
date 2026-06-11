@@ -90,8 +90,8 @@ Optional sensitive-candidate review modes are explicit:
   path, size, and name-based metadata.
 - `--sensitive-mode approved-raw` with `--approve-sensitive-review`,
   `--approve-sensitive-raw`, and `--sensitive-path <repo-relative-path>` reads
-  only the listed candidate paths, records static signal labels, and still
-  never stores raw sensitive contents in artifacts.
+  only listed paths that were detected as sensitive candidates, records static
+  signal labels, and still never stores raw sensitive contents in artifacts.
 
 ## Status
 

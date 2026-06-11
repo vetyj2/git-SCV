@@ -22,6 +22,7 @@ pub fn build(
 ) -> Result<SensitiveArtifact, ScvError> {
     let approved_paths = approved_paths(args);
     let candidate_paths = candidate_paths(detections);
+    ensure_approved_paths_are_candidates(&approved_paths, &candidate_paths)?;
     let entry_by_path: BTreeMap<&str, &Entry> = inventory
         .entries
         .iter()
@@ -77,6 +78,26 @@ fn approved_paths(args: &InspectArgs) -> BTreeSet<String> {
         .iter()
         .filter_map(|path| repo_relative_string(path))
         .collect()
+}
+
+fn ensure_approved_paths_are_candidates(
+    approved_paths: &BTreeSet<String>,
+    candidate_paths: &[String],
+) -> Result<(), ScvError> {
+    let candidates: BTreeSet<&str> = candidate_paths.iter().map(String::as_str).collect();
+    let unknown: Vec<&str> = approved_paths
+        .iter()
+        .map(String::as_str)
+        .filter(|path| !candidates.contains(path))
+        .collect();
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(ScvError::Inspect(format!(
+            "sensitive: 승인 경로가 감지된 민감 후보가 아니다: {}",
+            unknown.join(", ")
+        )))
+    }
 }
 
 fn base_candidate(
