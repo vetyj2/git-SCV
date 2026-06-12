@@ -35,6 +35,9 @@ cargo build
 git-scv inspect <repo-path> --out <run-dir>
 ```
 
+`<repo-path>` must be a local directory. Remote repository URLs are rejected
+until the snapshot flow is implemented.
+
 For the recommended review flow and artifact reading order, see
 [USAGE.md](USAGE.md).
 

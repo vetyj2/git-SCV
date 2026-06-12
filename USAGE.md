@@ -13,6 +13,10 @@ safe.
 git-scv inspect <repo-path> --out <run-dir>
 ```
 
+`<repo-path>` must be a local directory. Remote repository URLs such as
+`https://...` or `git@host:owner/repo.git` are rejected until Git-SCV has an
+explicit snapshot flow.
+
 Example:
 
 ```sh

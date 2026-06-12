@@ -58,6 +58,13 @@ pub fn parse() -> InspectArgs {
 
 /// 이 함수가 Ok를 돌려주기 전에는 어떤 파일도 만들지 않는다.
 pub fn validate(args: &InspectArgs) -> Result<(), ScvError> {
+    if is_remote_repo_input(&args.repo_path) {
+        return usage(format!(
+            "오류: 원격 저장소 URL 입력은 아직 지원하지 않는다. 먼저 로컬로 받은 저장소 경로를 지정한다: {}",
+            args.repo_path.display()
+        ));
+    }
+
     if !args.repo_path.exists() {
         return usage(format!(
             "오류: 검사 대상 경로가 존재하지 않는다: {}",
@@ -218,4 +225,25 @@ fn is_clean_repo_relative_path(path: &Path) -> bool {
         }
     }
     saw_normal
+}
+
+fn is_remote_repo_input(path: &Path) -> bool {
+    let value = path.to_string_lossy();
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("https://")
+        || lower.starts_with("http://")
+        || lower.starts_with("ssh://")
+        || lower.starts_with("git://")
+    {
+        return true;
+    }
+
+    let Some((user_host, repo_part)) = value.split_once(':') else {
+        return false;
+    };
+    user_host.contains('@')
+        && !user_host.contains(std::path::MAIN_SEPARATOR)
+        && !repo_part.is_empty()
+        && !repo_part.starts_with(std::path::MAIN_SEPARATOR)
+        && (repo_part.contains('/') || repo_part.ends_with(".git"))
 }
