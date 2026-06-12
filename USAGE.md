@@ -107,7 +107,7 @@ Use them in this order:
 12. `report.md`: human-readable Markdown summary, including sensitive review
    ack status.
 13. `report.html`: browser-friendly human-readable summary, including
-   sensitive review ack status.
+   sensitive review ack status and required ack strings.
 
 ## Sensitive Candidates
 

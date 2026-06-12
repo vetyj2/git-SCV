@@ -99,7 +99,7 @@ repository.
 9. Use `review.json` for machine-readable totals, verdict, and required
    actions, including any structured approval acknowledgements.
 10. Open `report.html` when a browser-friendly run report is useful; it also
-   shows sensitive review ack status.
+   shows sensitive review ack status and required ack strings.
 11. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
 12. Ask for explicit approval before running install, build, test, script, hook,

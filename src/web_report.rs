@@ -33,8 +33,16 @@ pub fn render(data: &RunData) -> String {
         .iter()
         .filter(|action| action.required)
         .map(|action| {
+            let acknowledgements = if action.acknowledgements.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<span>ack {}</span>",
+                    escape(&action.acknowledgements.join(", "))
+                )
+            };
             format!(
-                "<li><strong>{}</strong><span>{}개 경로</span></li>",
+                "<li><strong>{}</strong><span>{}개 경로</span>{acknowledgements}</li>",
                 escape(&action.id),
                 action.paths.len()
             )
