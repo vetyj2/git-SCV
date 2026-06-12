@@ -5,7 +5,7 @@
 
 use crate::model::{
     Category, FindingsArtifact, GateArtifact, Priority, ReviewAction, ReviewArtifact, ReviewCounts,
-    SliceArtifact, SCHEMA_VERSION,
+    SecurityArtifact, SliceArtifact, NO_EXEC_SENTENCE, SCHEMA_VERSION,
 };
 use std::collections::BTreeSet;
 
@@ -115,4 +115,31 @@ fn required_actions(gates: &GateArtifact, slices_over_token_limit: u64) -> Vec<R
             acknowledgements: Vec::new(),
         },
     ]
+}
+
+pub fn build_security(
+    findings: &FindingsArtifact,
+    review: &ReviewArtifact,
+    run_id: &str,
+) -> SecurityArtifact {
+    SecurityArtifact {
+        schema_version: SCHEMA_VERSION.into(),
+        run_id: run_id.into(),
+        verdict: review.verdict.clone(),
+        action_required: review.required_actions.iter().any(|action| action.required),
+        no_exec: NO_EXEC_SENTENCE.into(),
+        counts: review.counts.clone(),
+        required_actions: review.required_actions.clone(),
+        default_model_excluded_paths: review.default_model_excluded_paths.clone(),
+        limitations: findings.limitations.clone(),
+        references: vec![
+            "review.json".into(),
+            "findings.json".into(),
+            "evidence.json".into(),
+            "gates.json".into(),
+            "slices.json".into(),
+            "sensitive.json".into(),
+        ],
+        note: "다른 도구가 먼저 읽기 쉬운 보안 요약이다. 새 파일을 읽거나 안전을 보증하지 않으며 원천 산출물을 함께 확인해야 한다.".into(),
+    }
 }

@@ -77,8 +77,11 @@ SHA-256 digest, archive format, and extracted source path.
    from default model input until separately approved.
 9. Use `review.json` for machine-readable totals, verdict, and required
    actions.
-10. Treat `secret-candidate` findings as unresolved review items.
-11. Ask for explicit approval before running any install, build, test, script,
+10. Use `security.json` as a first-pass machine-readable security summary for
+   other tools. It references the source artifacts and is not a safety
+   guarantee.
+11. Treat `secret-candidate` findings as unresolved review items.
+12. Ask for explicit approval before running any install, build, test, script,
    hook, binary, or container command from the inspected repository.
 
 ## Artifact Files
@@ -98,6 +101,7 @@ sensitive.json
 gates.json
 slices.json
 review.json
+security.json
 report.md
 report.html
 ```
@@ -128,9 +132,12 @@ Use them in this order:
    excluded from default model input until separately approved.
 12. `review.json`: machine-readable verdict, totals including deep-analysis
    candidate count, required actions, and structured approval acknowledgements.
-13. `report.md`: human-readable Markdown summary, including sensitive review
+13. `security.json`: machine-readable security summary for other tools. It
+   mirrors verdict, counts, required actions, excluded paths, limitations, and
+   source artifact references without reading new files or proving safety.
+14. `report.md`: human-readable Markdown summary, including sensitive review
    ack status and the required action list.
-14. `report.html`: browser-friendly human-readable summary, including
+15. `report.html`: browser-friendly human-readable summary, including
    sensitive review ack status and required ack strings.
 
 ## Required Actions

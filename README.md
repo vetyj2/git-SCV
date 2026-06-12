@@ -85,6 +85,7 @@ sensitive.json
 gates.json
 slices.json
 review.json
+security.json
 report.md
 report.html
 ```
@@ -100,8 +101,8 @@ repository.
 3. Read `report.md` or `report.html` first, including the required action list,
    then check `source.json`, `inventory.json`, `coverage.json`,
    `findings.json`, `evidence.json`, `dependencies.json`, `sensitive.json`,
-   `gates.json`, `slices.json`, and `review.json` before approving any next
-   action.
+   `gates.json`, `slices.json`, `review.json`, and `security.json` before
+   approving any next action.
 4. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
 5. Ask for explicit approval before running install, build, test, script, hook,
@@ -134,9 +135,9 @@ Optional sensitive-candidate review modes are explicit:
 
 ## Status
 
-v0.2.1 prepares no-exec local and verified HTTPS snapshot inspection, sensitive
+v0.2.2 prepares no-exec local and verified HTTPS snapshot inspection, sensitive
 candidate review gates, path-only model input slices, human and HTML reports,
-and Cargo package/install checks.
+machine-readable security summaries, and Cargo package/install checks.
 
 ## License
 

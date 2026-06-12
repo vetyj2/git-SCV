@@ -1,6 +1,6 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02–V23)
+//! validate: 쓰기 전 메모리 검증 (V02–V24)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
@@ -371,6 +371,16 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
     }
 
     if errors.is_empty() {
+        let security_mismatches = security_summary_mismatches(data);
+        if !security_mismatches.is_empty() {
+            errors.push(format!(
+                "V24: security.json 요약 불일치: {}",
+                security_mismatches.join(", ")
+            ));
+        }
+    }
+
+    if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)
@@ -443,6 +453,11 @@ fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
             "review.json",
             &data.review.schema_version,
             &data.review.run_id,
+        ),
+        (
+            "security.json",
+            &data.security.schema_version,
+            &data.security.run_id,
         ),
     ]
 }
@@ -628,6 +643,56 @@ fn check_action(
     }
 }
 
+fn security_summary_mismatches(data: &RunData) -> Vec<&'static str> {
+    let mut mismatches = Vec::new();
+
+    if data.security.verdict != data.review.verdict {
+        mismatches.push("verdict");
+    }
+    if data.security.action_required
+        != data
+            .review
+            .required_actions
+            .iter()
+            .any(|action| action.required)
+    {
+        mismatches.push("action_required");
+    }
+    if data.security.no_exec != NO_EXEC_SENTENCE {
+        mismatches.push("no_exec");
+    }
+    if data.security.counts != data.review.counts {
+        mismatches.push("counts");
+    }
+    if data.security.required_actions != data.review.required_actions {
+        mismatches.push("required_actions");
+    }
+    if data.security.default_model_excluded_paths != data.review.default_model_excluded_paths {
+        mismatches.push("default_model_excluded_paths");
+    }
+    if data.security.limitations != data.findings.limitations {
+        mismatches.push("limitations");
+    }
+
+    for name in [
+        "review.json",
+        "findings.json",
+        "evidence.json",
+        "gates.json",
+        "slices.json",
+        "sensitive.json",
+    ] {
+        if !data.security.references.iter().any(|item| item == name) {
+            mismatches.push("references");
+            break;
+        }
+    }
+
+    mismatches.sort();
+    mismatches.dedup();
+    mismatches
+}
+
 pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
     let mut errors = Vec::new();
     let missing: Vec<&str> = ARTIFACTS
@@ -651,7 +716,7 @@ pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
     }
 }
 
-const ARTIFACTS: [&str; 14] = [
+const ARTIFACTS: [&str; 15] = [
     "run.json",
     "source.json",
     "inventory.json",
@@ -659,11 +724,12 @@ const ARTIFACTS: [&str; 14] = [
     "evidence.json",
     "findings.json",
     "dependencies.json",
-    "gates.json",
-    "review.json",
+    "sectors.json",
     "sensitive.json",
+    "gates.json",
     "slices.json",
+    "review.json",
+    "security.json",
     "report.md",
     "report.html",
-    "sectors.json",
 ];

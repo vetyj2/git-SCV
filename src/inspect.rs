@@ -152,6 +152,7 @@ fn run_inner(args: InspectArgs, snapshot: Option<SnapshotInfo>) -> Result<(), Sc
     let gates = crate::gates::build(&detect_outcome.detections, &sensitive, &run_id);
     let slices = crate::slices::build(&inventory, &sectors, &gates, &run_id);
     let review = crate::review::build(&findings, &gates, &slices, &run_id);
+    let security = crate::review::build_security(&findings, &review, &run_id);
     let finished_at = format_rfc3339(OffsetDateTime::now_utc());
 
     let mut data = RunData {
@@ -170,6 +171,7 @@ fn run_inner(args: InspectArgs, snapshot: Option<SnapshotInfo>) -> Result<(), Sc
         gates,
         slices,
         review,
+        security,
         report_md: String::new(),
     };
     data.report_md = crate::report::render(&data);

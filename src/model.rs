@@ -514,7 +514,7 @@ pub struct SliceArtifact {
 
 // ------------------------------------------------------------- review.json
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct ReviewCounts {
     pub findings_total: u64,
     pub high_priority_findings: u64,
@@ -527,7 +527,7 @@ pub struct ReviewCounts {
     pub slices_over_token_limit: u64,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct ReviewAction {
     pub id: String,
     pub required: bool,
@@ -544,6 +544,23 @@ pub struct ReviewArtifact {
     pub counts: ReviewCounts,
     pub required_actions: Vec<ReviewAction>,
     pub default_model_excluded_paths: Vec<String>,
+    pub note: String,
+}
+
+// ----------------------------------------------------------- security.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SecurityArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub verdict: String,
+    pub action_required: bool,
+    pub no_exec: String,
+    pub counts: ReviewCounts,
+    pub required_actions: Vec<ReviewAction>,
+    pub default_model_excluded_paths: Vec<String>,
+    pub limitations: Vec<String>,
+    pub references: Vec<String>,
     pub note: String,
 }
 
@@ -609,5 +626,6 @@ pub struct RunData {
     pub gates: GateArtifact,
     pub slices: SliceArtifact,
     pub review: ReviewArtifact,
+    pub security: SecurityArtifact,
     pub report_md: String,
 }
