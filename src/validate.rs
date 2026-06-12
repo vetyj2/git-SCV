@@ -1,6 +1,6 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02–V16)
+//! validate: 쓰기 전 메모리 검증 (V02–V17)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
@@ -105,6 +105,22 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         .iter()
         .map(|entry| entry.path.as_str())
         .collect::<BTreeSet<_>>();
+    let mut unknown_evidence_paths = data
+        .evidence
+        .evidence
+        .iter()
+        .filter(|item| !inventory_paths.contains(item.path.as_str()))
+        .map(|item| item.path.as_str())
+        .collect::<Vec<_>>();
+    if !unknown_evidence_paths.is_empty() {
+        unknown_evidence_paths.sort();
+        unknown_evidence_paths.dedup();
+        errors.push(format!(
+            "V17: 인벤토리에 없는 증거 경로: {}",
+            unknown_evidence_paths.join(", ")
+        ));
+    }
+
     let inventory_files = data
         .inventory
         .entries
