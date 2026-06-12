@@ -2,7 +2,7 @@
 //!
 //! 기존 RunData만 렌더링한다. 대상 저장소 파일을 새로 읽지 않는다.
 
-use crate::model::{Priority, RunData, NO_EXEC_SENTENCE};
+use crate::model::{Priority, RunData, SensitiveReviewMode, NO_EXEC_SENTENCE};
 
 pub fn render(data: &RunData) -> String {
     let findings = if data.findings.findings.is_empty() {
@@ -148,6 +148,16 @@ pub fn render(data: &RunData) -> String {
       </div>
     </section>
     <section>
+      <h2>민감 후보 처리</h2>
+      <div class="grid">
+        <div class="item"><div class="label">모드</div><div class="value">{sensitive_mode}</div></div>
+        <div class="item"><div class="label">후보</div><div class="value">{sensitive_candidates}</div></div>
+        <div class="item"><div class="label">원문 승인 경로</div><div class="value">{approved_paths}</div></div>
+        <div class="item"><div class="label">승인 ack 확인</div><div class="value">1차 {review_ack} / 2차 {raw_ack}</div></div>
+      </div>
+      <p class="note">{sensitive_note}</p>
+    </section>
+    <section>
       <h2>승인 게이트</h2>
       <ul>{required_actions}</ul>
     </section>
@@ -177,6 +187,12 @@ pub fn render(data: &RunData) -> String {
             .iter()
             .map(|manifest| manifest.dependencies.len())
             .sum::<usize>(),
+        sensitive_mode = sensitive_mode_label(data.sensitive.mode),
+        sensitive_candidates = data.sensitive.candidates.len(),
+        approved_paths = data.sensitive.approved_paths.len(),
+        review_ack = yes_no(data.sensitive.review_ack_confirmed),
+        raw_ack = yes_no(data.sensitive.raw_ack_confirmed),
+        sensitive_note = escape(&data.sensitive.note),
         required_actions = required_actions,
         findings = findings,
         no_exec = escape(NO_EXEC_SENTENCE),
@@ -189,6 +205,22 @@ fn priority_label(priority: Priority) -> &'static str {
         Priority::Low => "낮음",
         Priority::Medium => "중간",
         Priority::High => "높음",
+    }
+}
+
+fn sensitive_mode_label(mode: SensitiveReviewMode) -> &'static str {
+    match mode {
+        SensitiveReviewMode::Exclude => "exclude",
+        SensitiveReviewMode::RedactedSummary => "redacted-summary",
+        SensitiveReviewMode::ApprovedRaw => "approved-raw",
+    }
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "예"
+    } else {
+        "아니오"
     }
 }
 

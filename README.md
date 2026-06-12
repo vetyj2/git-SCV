@@ -98,7 +98,8 @@ repository.
    from default model input until separately approved.
 9. Use `review.json` for machine-readable totals, verdict, and required
    actions, including any structured approval acknowledgements.
-10. Open `report.html` when a browser-friendly run report is useful.
+10. Open `report.html` when a browser-friendly run report is useful; it also
+   shows sensitive review ack status.
 11. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
 12. Ask for explicit approval before running install, build, test, script, hook,
