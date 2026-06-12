@@ -46,7 +46,8 @@ user-provided checksum before handing a local snapshot to the inspector.
 The reserved `snapshot` command already enforces the checksum boundary, but it
 does not download remote content yet. Its `--sha256` value must be a 64-character
 hex SHA-256 digest, its URL must start with `https://` and end with `.zip`,
-`.tar.gz`, or `.tgz`, and its output directory must be new or empty.
+`.tar.gz`, or `.tgz`, it must not include URL user information, and its output
+directory must be new or empty.
 
 For the recommended review flow and artifact reading order, see
 [USAGE.md](USAGE.md).

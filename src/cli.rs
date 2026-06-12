@@ -164,6 +164,9 @@ pub fn validate_snapshot(args: &SnapshotArgs) -> Result<(), ScvError> {
             args.url
         ));
     }
+    if https_url_has_userinfo(&args.url) {
+        return usage("오류: snapshot URL은 사용자 정보를 포함할 수 없다.".into());
+    }
     if !is_supported_archive_url(&args.url) {
         return usage(format!(
             "오류: snapshot URL은 .zip, .tar.gz, .tgz 압축 주소여야 한다: {}",
@@ -183,6 +186,16 @@ fn is_sha256_hex(value: &str) -> bool {
 
 fn is_https_snapshot_url(value: &str) -> bool {
     value.to_ascii_lowercase().starts_with("https://")
+}
+
+fn https_url_has_userinfo(value: &str) -> bool {
+    let Some(after_scheme) = value.get("https://".len()..) else {
+        return false;
+    };
+    let authority = after_scheme
+        .split_once('/')
+        .map_or(after_scheme, |(before_path, _)| before_path);
+    authority.contains('@')
 }
 
 fn is_supported_archive_url(value: &str) -> bool {

@@ -23,8 +23,8 @@ will be separate from `inspect` and is planned to use archive download plus a
 user-provided checksum before handing a local snapshot to the inspector.
 The reserved `snapshot` command already refuses requests without `--sha256`,
 requires a 64-character hex SHA-256 digest, accepts only `https://` archive URLs
-ending with `.zip`, `.tar.gz`, or `.tgz`, and does not download remote content
-yet. Its output directory must be new or empty.
+ending with `.zip`, `.tar.gz`, or `.tgz`, rejects URL user information, and does
+not download remote content yet. Its output directory must be new or empty.
 
 Example:
 
