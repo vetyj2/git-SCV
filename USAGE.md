@@ -97,11 +97,13 @@ Use them in this order:
 8. `sensitive.json`: sensitive-candidate mode, approvals, ack confirmations,
    candidates, and redacted review signals.
 9. `gates.json`: sensitive raw-review and execution approval candidate lists,
-   including execution approval before model input.
+   including execution approval before model input and structured sensitive
+   review ack strings.
 10. `slices.json`: path-only reading slices derived from `sectors.json` and
    `gates.json`; sensitive and execution candidates are excluded from default
    model input until separately approved.
-11. `review.json`: machine-readable verdict, totals, and required actions.
+11. `review.json`: machine-readable verdict, totals, required actions, and
+   structured approval acknowledgements.
 12. `report.md`: human-readable Markdown summary, including sensitive review
    ack status.
 13. `report.html`: browser-friendly human-readable summary.

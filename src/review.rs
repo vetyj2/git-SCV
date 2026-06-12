@@ -89,12 +89,14 @@ fn required_actions(gates: &GateArtifact, slices_over_token_limit: u64) -> Vec<R
             required: gates.sensitive_raw_review.approval_required,
             reason: gates.sensitive_raw_review.message.clone(),
             paths: gates.sensitive_raw_review.paths.clone(),
+            acknowledgements: gates.sensitive_raw_review.acknowledgements.clone(),
         },
         ReviewAction {
             id: "execution-review".into(),
             required: gates.execution_review.approval_required,
             reason: gates.execution_review.message.clone(),
             paths: gates.execution_review.paths.clone(),
+            acknowledgements: gates.execution_review.acknowledgements.clone(),
         },
         ReviewAction {
             id: "oversized-slice-review".into(),
@@ -103,6 +105,7 @@ fn required_actions(gates: &GateArtifact, slices_over_token_limit: u64) -> Vec<R
                 "한도를 넘는 단일 파일 슬라이스는 파일 일부 읽기 또는 별도 요약 전략이 필요하다."
                     .into(),
             paths: Vec::new(),
+            acknowledgements: Vec::new(),
         },
     ]
 }

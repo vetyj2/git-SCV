@@ -3,6 +3,7 @@
 //! 헤르메스나 다른 에이전트가 모델 입력 또는 설치·빌드·테스트·실행 승인
 //! 요청 전에 제시해야 할 후보 목록을 감지 결과에서 조립한다.
 
+use crate::cli::{SENSITIVE_RAW_ACK, SENSITIVE_REVIEW_ACK};
 use crate::model::{
     Detection, GateArtifact, GateItem, GatePrompt, RuleId, SensitiveArtifact, SCHEMA_VERSION,
 };
@@ -42,11 +43,13 @@ pub fn build(
             approval_required: !sensitive_paths.is_empty(),
             message: "민감 후보 원문을 모델 입력 또는 진단 입력에 포함하려면 --approve-sensitive-review, --sensitive-review-ack review-sensitive-candidates, --approve-sensitive-raw, --sensitive-raw-ack include-approved-sensitive-raw-in-diagnostic-input, 경로별 --sensitive-path 승인이 모두 필요하다. 승인 질문에는 paths 목록을 그대로 보여준다.".into(),
             paths: sensitive_paths,
+            acknowledgements: vec![SENSITIVE_REVIEW_ACK.into(), SENSITIVE_RAW_ACK.into()],
         },
         execution_review: GatePrompt {
             approval_required: !execution_paths.is_empty(),
             message: "모델 입력, 설치, 빌드, 테스트, 실행, 훅, 컨테이너 명령 전에 자동 실행 후보와 실행 관련 후보 paths 목록을 사용자에게 제시하고 별도 승인을 받아야 한다.".into(),
             paths: execution_paths,
+            acknowledgements: Vec::new(),
         },
         sensitive_candidates,
         automatic_execution_candidates,

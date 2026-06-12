@@ -440,6 +440,7 @@ pub struct GatePrompt {
     pub approval_required: bool,
     pub message: String,
     pub paths: Vec<String>,
+    pub acknowledgements: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -521,6 +522,7 @@ pub struct ReviewAction {
     pub required: bool,
     pub reason: String,
     pub paths: Vec<String>,
+    pub acknowledgements: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]

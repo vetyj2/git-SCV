@@ -459,6 +459,7 @@ fn review_action_mismatches(data: &RunData) -> Vec<&'static str> {
         "sensitive-raw-review",
         data.gates.sensitive_raw_review.approval_required,
         &data.gates.sensitive_raw_review.paths,
+        &data.gates.sensitive_raw_review.acknowledgements,
     );
     check_action(
         &mut mismatches,
@@ -466,6 +467,7 @@ fn review_action_mismatches(data: &RunData) -> Vec<&'static str> {
         "execution-review",
         data.gates.execution_review.approval_required,
         &data.gates.execution_review.paths,
+        &data.gates.execution_review.acknowledgements,
     );
     check_action(
         &mut mismatches,
@@ -475,6 +477,7 @@ fn review_action_mismatches(data: &RunData) -> Vec<&'static str> {
             .slices
             .iter()
             .any(|slice| slice.over_token_limit),
+        &[],
         &[],
     );
 
@@ -489,6 +492,7 @@ fn check_action(
     id: &'static str,
     expected_required: bool,
     expected_paths: &[String],
+    expected_acknowledgements: &[String],
 ) {
     let Some(action) = actions.get(id) else {
         mismatches.push(id);
@@ -503,7 +507,19 @@ fn check_action(
         .iter()
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
-    if action.required != expected_required || actual_paths != expected_paths {
+    let actual_acknowledgements = action
+        .acknowledgements
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let expected_acknowledgements = expected_acknowledgements
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if action.required != expected_required
+        || actual_paths != expected_paths
+        || actual_acknowledgements != expected_acknowledgements
+    {
         mismatches.push(id);
     }
 }

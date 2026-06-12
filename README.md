@@ -91,11 +91,13 @@ repository.
    approval and ack confirmation state.
 7. Check `gates.json` before model input, install, build, test, or run
    approval; execution candidates also require approval before model input.
+   Sensitive-review ack strings are also exposed as structured
+   `acknowledgements`.
 8. Use `slices.json` as a path-only reading plan for later model input.
    Sensitive, automatic-execution, and execution-related candidates are excluded
    from default model input until separately approved.
 9. Use `review.json` for machine-readable totals, verdict, and required
-   actions.
+   actions, including any structured approval acknowledgements.
 10. Open `report.html` when a browser-friendly run report is useful.
 11. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
