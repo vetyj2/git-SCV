@@ -4,7 +4,7 @@
 //! 두 승인 플래그와 경로 목록이 모두 주어진 후보만 읽고, 원문은 저장하지
 //! 않고 정적 신호 라벨만 남긴다.
 
-use crate::cli::InspectArgs;
+use crate::cli::{InspectArgs, SENSITIVE_RAW_ACK, SENSITIVE_REVIEW_ACK};
 use crate::errors::ScvError;
 use crate::model::{
     Detection, Entry, InventoryArtifact, RuleId, SensitiveArtifact, SensitiveCandidate,
@@ -53,6 +53,8 @@ pub fn build(
         mode: args.sensitive_mode,
         first_approval: args.approve_sensitive_review,
         second_approval: args.approve_sensitive_raw,
+        review_ack_confirmed: args.sensitive_review_ack.as_deref() == Some(SENSITIVE_REVIEW_ACK),
+        raw_ack_confirmed: args.sensitive_raw_ack.as_deref() == Some(SENSITIVE_RAW_ACK),
         approved_paths: approved_paths.into_iter().collect(),
         unapproved_paths,
         candidates,

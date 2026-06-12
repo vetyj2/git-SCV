@@ -424,6 +424,8 @@ pub struct SensitiveArtifact {
     pub mode: SensitiveReviewMode,
     pub first_approval: bool,
     pub second_approval: bool,
+    pub review_ack_confirmed: bool,
+    pub raw_ack_confirmed: bool,
     pub approved_paths: Vec<String>,
     pub unapproved_paths: Vec<String>,
     pub candidates: Vec<SensitiveCandidate>,

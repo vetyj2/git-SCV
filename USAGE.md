@@ -44,7 +44,8 @@ those URLs to artifacts.
    unknown.
 4. Open `findings.json` and follow each evidence ID into `evidence.json`.
 5. Open `sensitive.json` and confirm whether sensitive candidates were excluded,
-   summarized, or path-approved for raw review.
+   summarized, or path-approved for raw review, including approval and ack
+   confirmation state.
 6. Open `dependencies.json` to review direct dependency names and source kinds.
    Git-SCV does not store raw version ranges, URLs, git addresses, or local
    paths there.
@@ -92,8 +93,8 @@ Use them in this order:
 6. `dependencies.json`: direct dependency names and source kinds from readable
    manifests; raw specs are not stored.
 7. `sectors.json`: suggested reading plan for deeper manual review.
-8. `sensitive.json`: sensitive-candidate mode, approvals, candidates, and
-   redacted review signals.
+8. `sensitive.json`: sensitive-candidate mode, approvals, ack confirmations,
+   candidates, and redacted review signals.
 9. `gates.json`: sensitive raw-review and execution approval candidate lists,
    including execution approval before model input.
 10. `slices.json`: path-only reading slices derived from `sectors.json` and
