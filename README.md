@@ -112,14 +112,18 @@ executable script behind a sensitive-looking name.
 
 Optional sensitive-candidate review modes are explicit:
 
-- `--sensitive-mode redacted-summary --approve-sensitive-review` records only
-  path, size, and name-based metadata.
+- `--sensitive-mode redacted-summary` with `--approve-sensitive-review` and
+  `--sensitive-review-ack review-sensitive-candidates` records only path, size,
+  and name-based metadata.
 - `--sensitive-mode approved-raw` with `--approve-sensitive-review`,
-  `--approve-sensitive-raw`, and `--sensitive-path <repo-relative-path>` reads
-  only listed paths that were detected as sensitive candidates, records static
-  signal labels including common shell, Node, Python, PowerShell, and Ruby
-  execution tokens, rejects URL-like path values, and still never stores raw
-  sensitive contents in artifacts.
+  `--sensitive-review-ack review-sensitive-candidates`,
+  `--approve-sensitive-raw`,
+  `--sensitive-raw-ack include-approved-sensitive-raw-in-diagnostic-input`, and
+  `--sensitive-path <repo-relative-path>` reads only listed paths that were
+  detected as sensitive candidates, records static signal labels including
+  common shell, Node, Python, PowerShell, and Ruby execution tokens, rejects
+  URL-like path values, and still never stores raw sensitive contents in
+  artifacts.
 
 ## Status
 

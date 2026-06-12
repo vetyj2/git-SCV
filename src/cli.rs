@@ -9,6 +9,10 @@ use std::path::{Component, Path, PathBuf};
 
 /// 도움말 고정 문구.
 pub const NO_EXEC_HELP: &str = "git-scv는 대상 저장소의 어떤 명령, 스크립트, 훅도 실행하지 않는다.";
+/// 민감 후보 별도 진단 1차 승인 확인 문구.
+pub const SENSITIVE_REVIEW_ACK: &str = "review-sensitive-candidates";
+/// 민감 후보 원문 분석 2차 승인 확인 문구.
+pub const SENSITIVE_RAW_ACK: &str = "include-approved-sensitive-raw-in-diagnostic-input";
 
 #[derive(Parser)]
 #[command(
@@ -42,9 +46,15 @@ pub struct InspectArgs {
     /// 민감 후보 별도 진단 1차 승인
     #[arg(long)]
     pub approve_sensitive_review: bool,
+    /// 민감 후보 별도 진단 1차 승인 확인 문구
+    #[arg(long = "sensitive-review-ack")]
+    pub sensitive_review_ack: Option<String>,
     /// 승인 경로 원문 분석 2차 승인
     #[arg(long)]
     pub approve_sensitive_raw: bool,
+    /// 승인 경로 원문 분석 2차 승인 확인 문구
+    #[arg(long = "sensitive-raw-ack")]
+    pub sensitive_raw_ack: Option<String>,
     /// 원문 분석을 승인할 저장소 상대 경로
     #[arg(long = "sensitive-path")]
     pub sensitive_paths: Vec<PathBuf>,
@@ -178,6 +188,8 @@ fn validate_sensitive_args(args: &InspectArgs) -> Result<(), ScvError> {
         SensitiveReviewMode::Exclude => {
             if args.approve_sensitive_review
                 || args.approve_sensitive_raw
+                || args.sensitive_review_ack.is_some()
+                || args.sensitive_raw_ack.is_some()
                 || !args.sensitive_paths.is_empty()
             {
                 return usage(
@@ -192,7 +204,15 @@ fn validate_sensitive_args(args: &InspectArgs) -> Result<(), ScvError> {
                         .into(),
                 );
             }
-            if args.approve_sensitive_raw || !args.sensitive_paths.is_empty() {
+            if args.sensitive_review_ack.as_deref() != Some(SENSITIVE_REVIEW_ACK) {
+                return usage(format!(
+                    "오류: redacted-summary 모드는 --sensitive-review-ack {SENSITIVE_REVIEW_ACK} 확인 문구가 필요하다."
+                ));
+            }
+            if args.approve_sensitive_raw
+                || args.sensitive_raw_ack.is_some()
+                || !args.sensitive_paths.is_empty()
+            {
                 return usage("오류: 원문 승인 옵션은 approved-raw 모드에서만 쓸 수 있다.".into());
             }
         }
@@ -208,6 +228,13 @@ fn validate_sensitive_args(args: &InspectArgs) -> Result<(), ScvError> {
                     "오류: approved-raw 모드는 --sensitive-path 승인 경로가 하나 이상 필요하다."
                         .into(),
                 );
+            }
+            if args.sensitive_review_ack.as_deref() != Some(SENSITIVE_REVIEW_ACK)
+                || args.sensitive_raw_ack.as_deref() != Some(SENSITIVE_RAW_ACK)
+            {
+                return usage(format!(
+                    "오류: approved-raw 모드는 --sensitive-review-ack {SENSITIVE_REVIEW_ACK} 와 --sensitive-raw-ack {SENSITIVE_RAW_ACK} 확인 문구가 필요하다."
+                ));
             }
         }
     }

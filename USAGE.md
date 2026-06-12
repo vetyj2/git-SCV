@@ -133,7 +133,8 @@ Default mode. Sensitive candidates are listed but not read.
 ```sh
 git-scv inspect <repo-path> --out <run-dir> \
   --sensitive-mode redacted-summary \
-  --approve-sensitive-review
+  --approve-sensitive-review \
+  --sensitive-review-ack review-sensitive-candidates
 ```
 
 Redacted summary mode. Git-SCV records path, size, and name-based metadata only.
@@ -143,14 +144,17 @@ It does not read candidate contents.
 git-scv inspect <repo-path> --out <run-dir> \
   --sensitive-mode approved-raw \
   --approve-sensitive-review \
+  --sensitive-review-ack review-sensitive-candidates \
   --approve-sensitive-raw \
+  --sensitive-raw-ack include-approved-sensitive-raw-in-diagnostic-input \
   --sensitive-path <repo-relative-path>
 ```
 
-Approved raw mode. Git-SCV reads only the listed candidate path or paths. It
-records static signal labels such as script markers or command-token presence
-including common shell, Node, Python, PowerShell, and Ruby execution tokens. It
-does not store raw candidate contents in artifacts.
+Approved raw mode. Git-SCV reads only the listed candidate path or paths after
+both approval flags and both exact ack strings are present. It records static
+signal labels such as script markers or command-token presence including common
+shell, Node, Python, PowerShell, and Ruby execution tokens. It does not store
+raw candidate contents in artifacts.
 
 Each `--sensitive-path` value must be a repository-relative path that Git-SCV
 detected as a sensitive candidate in the same run. URL-like values such as
