@@ -146,6 +146,18 @@ pub fn validate_snapshot(args: &SnapshotArgs) -> Result<(), ScvError> {
     if !is_sha256_hex(sha256) {
         return usage("오류: snapshot 명령의 --sha256 값은 64자리 hex여야 한다.".into());
     }
+    if args.out.exists() && !args.out.is_dir() {
+        return usage(format!(
+            "오류: snapshot 출력 경로가 디렉터리가 아니다: {}",
+            args.out.display()
+        ));
+    }
+    if args.out.is_dir() && has_entries(&args.out)? {
+        return usage(format!(
+            "오류: snapshot 출력 디렉터리가 비어 있지 않다: {}",
+            args.out.display()
+        ));
+    }
 
     usage(
         "오류: snapshot 명령은 아직 구현하지 않았다. 원격 스냅샷은 압축 내려받기와 체크섬 검증 구현 뒤에만 사용할 수 있다."
