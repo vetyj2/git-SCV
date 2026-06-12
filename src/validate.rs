@@ -1,11 +1,12 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02–V17)
+//! validate: 쓰기 전 메모리 검증 (V02–V18)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
 use crate::model::{
-    Priority, ReviewAction, RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE, SCHEMA_VERSION,
+    EvidenceKind, Priority, ReviewAction, RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE,
+    SCHEMA_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -118,6 +119,22 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         errors.push(format!(
             "V17: 인벤토리에 없는 증거 경로: {}",
             unknown_evidence_paths.join(", ")
+        ));
+    }
+
+    let mut malformed_evidence = data
+        .evidence
+        .evidence
+        .iter()
+        .filter(|item| evidence_shape_error(item))
+        .map(|item| item.id.as_str())
+        .collect::<Vec<_>>();
+    if !malformed_evidence.is_empty() {
+        malformed_evidence.sort();
+        malformed_evidence.dedup();
+        errors.push(format!(
+            "V18: 증거 형태 불일치: {}",
+            malformed_evidence.join(", ")
         ));
     }
 
@@ -251,6 +268,20 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
     } else {
         Err(errors)
     }
+}
+
+fn evidence_shape_error(item: &crate::model::Evidence) -> bool {
+    let invalid_lines = match item.kind {
+        EvidenceKind::ContentLine => match item.lines {
+            Some(lines) => lines.start == 0 || lines.end < lines.start,
+            None => true,
+        },
+        EvidenceKind::FilePresence | EvidenceKind::SymlinkRecord | EvidenceKind::SecretName => {
+            item.lines.is_some()
+        }
+    };
+    let invalid_excerpt = item.kind == EvidenceKind::SecretName && item.excerpt.is_some();
+    invalid_lines || invalid_excerpt
 }
 
 fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
