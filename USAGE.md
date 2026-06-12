@@ -22,8 +22,8 @@ The `inspect` command never fetches from a remote. A future snapshot command
 will be separate from `inspect` and is planned to use archive download plus a
 user-provided checksum before handing a local snapshot to the inspector.
 The reserved `snapshot` command already refuses requests without `--sha256`,
-requires a 64-character hex SHA-256 digest, and does not download remote
-content yet. Its output directory must be new or empty.
+requires a 64-character hex SHA-256 digest, accepts only `https://` URLs, and
+does not download remote content yet. Its output directory must be new or empty.
 
 Example:
 
