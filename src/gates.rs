@@ -45,7 +45,7 @@ pub fn build(
         },
         execution_review: GatePrompt {
             approval_required: !execution_paths.is_empty(),
-            message: "설치, 빌드, 테스트, 실행, 훅, 컨테이너 명령을 실행하기 전에는 자동 실행 후보와 실행 관련 후보 paths 목록을 사용자에게 제시하고 별도 승인을 받아야 한다.".into(),
+            message: "모델 입력, 설치, 빌드, 테스트, 실행, 훅, 컨테이너 명령 전에 자동 실행 후보와 실행 관련 후보 paths 목록을 사용자에게 제시하고 별도 승인을 받아야 한다.".into(),
             paths: execution_paths,
         },
         sensitive_candidates,

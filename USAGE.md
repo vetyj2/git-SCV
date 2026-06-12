@@ -49,7 +49,8 @@ those URLs to artifacts.
    Git-SCV does not store raw version ranges, URLs, git addresses, or local
    paths there.
 7. Open `gates.json` before model input or any install, build, test, script,
-   hook, binary, or container approval request.
+   hook, binary, or container approval request. Execution candidates also
+   require approval before model input.
 8. Use `slices.json` as the path-only reading plan for later model input.
    Sensitive, automatic-execution, and execution-related candidates are excluded
    from default model input until separately approved.
@@ -93,7 +94,8 @@ Use them in this order:
 7. `sectors.json`: suggested reading plan for deeper manual review.
 8. `sensitive.json`: sensitive-candidate mode, approvals, candidates, and
    redacted review signals.
-9. `gates.json`: sensitive raw-review and execution approval candidate lists.
+9. `gates.json`: sensitive raw-review and execution approval candidate lists,
+   including execution approval before model input.
 10. `slices.json`: path-only reading slices derived from `sectors.json` and
    `gates.json`; sensitive and execution candidates are excluded from default
    model input until separately approved.

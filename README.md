@@ -88,7 +88,7 @@ repository.
    version ranges, URLs, git addresses, and local paths are not stored.
 6. Check `sensitive.json` before raw sensitive-candidate review.
 7. Check `gates.json` before model input, install, build, test, or run
-   approval.
+   approval; execution candidates also require approval before model input.
 8. Use `slices.json` as a path-only reading plan for later model input.
    Sensitive, automatic-execution, and execution-related candidates are excluded
    from default model input until separately approved.
