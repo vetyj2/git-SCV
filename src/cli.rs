@@ -1,5 +1,5 @@
 //! 명령 입구.
-//! 인자 구조와 도움말은 고정되어 있고, 입력 검증은 구현 대기 상태다.
+//! 인자 구조와 도움말, 실행 전 입력 검증을 맡는다.
 
 use crate::errors::ScvError;
 use crate::model::SensitiveReviewMode;
@@ -31,6 +31,9 @@ enum Subcommand {
     /// 저장소를 무실행으로 검사하고 산출물 디렉터리를 만든다
     #[command(after_help = NO_EXEC_HELP)]
     Inspect(InspectArgs),
+    /// 원격 압축 스냅샷을 내려받아 체크섬 검증 뒤 로컬 검사 대상으로 준비한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Snapshot(SnapshotArgs),
 }
 
 #[derive(clap::Args)]
@@ -60,9 +63,27 @@ pub struct InspectArgs {
     pub sensitive_paths: Vec<PathBuf>,
 }
 
-pub fn parse() -> InspectArgs {
+#[derive(clap::Args)]
+pub struct SnapshotArgs {
+    /// 내려받을 원격 압축 스냅샷 URL
+    pub url: String,
+    /// 스냅샷을 준비할 출력 디렉터리
+    #[arg(long)]
+    pub out: PathBuf,
+    /// 사용자가 별도 경로로 확인한 SHA-256 체크섬
+    #[arg(long)]
+    pub sha256: Option<String>,
+}
+
+pub enum Invocation {
+    Inspect(InspectArgs),
+    Snapshot(SnapshotArgs),
+}
+
+pub fn parse() -> Invocation {
     match Cli::parse().command {
-        Subcommand::Inspect(args) => args,
+        Subcommand::Inspect(args) => Invocation::Inspect(args),
+        Subcommand::Snapshot(args) => Invocation::Snapshot(args),
     }
 }
 
@@ -113,6 +134,17 @@ pub fn validate(args: &InspectArgs) -> Result<(), ScvError> {
     validate_sensitive_args(args)?;
 
     Ok(())
+}
+
+pub fn validate_snapshot(args: &SnapshotArgs) -> Result<(), ScvError> {
+    if args.sha256.as_deref().is_none_or(str::is_empty) {
+        return usage("오류: snapshot 명령은 --sha256 체크섬이 필요하다.".into());
+    }
+
+    usage(
+        "오류: snapshot 명령은 아직 구현하지 않았다. 원격 스냅샷은 압축 내려받기와 체크섬 검증 구현 뒤에만 사용할 수 있다."
+            .into(),
+    )
 }
 
 fn usage<T>(message: String) -> Result<T, ScvError> {

@@ -43,6 +43,8 @@ inspect that local directory.
 The `inspect` command never fetches from a remote. A future snapshot command
 will be separate from `inspect` and is planned to use archive download plus a
 user-provided checksum before handing a local snapshot to the inspector.
+The reserved `snapshot` command already enforces the checksum boundary, but it
+does not download remote content yet.
 
 For the recommended review flow and artifact reading order, see
 [USAGE.md](USAGE.md).
