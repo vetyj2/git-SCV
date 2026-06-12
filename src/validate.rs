@@ -1,11 +1,13 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02–V14)
+//! validate: 쓰기 전 메모리 검증 (V02–V15)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
-use crate::model::{Priority, RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE, SCHEMA_VERSION};
-use std::collections::BTreeSet;
+use crate::model::{
+    Priority, ReviewAction, RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE, SCHEMA_VERSION,
+};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -195,6 +197,16 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
     }
 
     if errors.is_empty() {
+        let action_mismatches = review_action_mismatches(data);
+        if !action_mismatches.is_empty() {
+            errors.push(format!(
+                "V15: review.json 필수 액션 불일치: {}",
+                action_mismatches.join(", ")
+            ));
+        }
+    }
+
+    if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)
@@ -341,6 +353,74 @@ fn review_summary_mismatches(data: &RunData) -> Vec<&'static str> {
     }
 
     mismatches
+}
+
+fn review_action_mismatches(data: &RunData) -> Vec<&'static str> {
+    let mut mismatches = Vec::new();
+    let mut actions: BTreeMap<&str, &ReviewAction> = BTreeMap::new();
+    let mut duplicate_id = false;
+    for action in &data.review.required_actions {
+        if actions.insert(action.id.as_str(), action).is_some() {
+            duplicate_id = true;
+        }
+    }
+    if duplicate_id || actions.len() != 3 {
+        mismatches.push("required_action_ids");
+    }
+
+    check_action(
+        &mut mismatches,
+        &actions,
+        "sensitive-raw-review",
+        data.gates.sensitive_raw_review.approval_required,
+        &data.gates.sensitive_raw_review.paths,
+    );
+    check_action(
+        &mut mismatches,
+        &actions,
+        "execution-review",
+        data.gates.execution_review.approval_required,
+        &data.gates.execution_review.paths,
+    );
+    check_action(
+        &mut mismatches,
+        &actions,
+        "oversized-slice-review",
+        data.slices
+            .slices
+            .iter()
+            .any(|slice| slice.over_token_limit),
+        &[],
+    );
+
+    mismatches.sort();
+    mismatches.dedup();
+    mismatches
+}
+
+fn check_action(
+    mismatches: &mut Vec<&'static str>,
+    actions: &BTreeMap<&str, &ReviewAction>,
+    id: &'static str,
+    expected_required: bool,
+    expected_paths: &[String],
+) {
+    let Some(action) = actions.get(id) else {
+        mismatches.push(id);
+        return;
+    };
+    let actual_paths = action
+        .paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let expected_paths = expected_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if action.required != expected_required || actual_paths != expected_paths {
+        mismatches.push(id);
+    }
 }
 
 pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
