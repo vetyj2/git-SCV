@@ -216,6 +216,10 @@ fn validate_sensitive_args(args: &InspectArgs) -> Result<(), ScvError> {
 }
 
 fn is_clean_repo_relative_path(path: &Path) -> bool {
+    if is_repo_url_input(path) {
+        return false;
+    }
+
     let mut saw_normal = false;
     for component in path.components() {
         match component {

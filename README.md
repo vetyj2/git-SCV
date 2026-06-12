@@ -112,7 +112,8 @@ Optional sensitive-candidate review modes are explicit:
   `--approve-sensitive-raw`, and `--sensitive-path <repo-relative-path>` reads
   only listed paths that were detected as sensitive candidates, records static
   signal labels including common shell, Node, Python, PowerShell, and Ruby
-  execution tokens, and still never stores raw sensitive contents in artifacts.
+  execution tokens, rejects URL-like path values, and still never stores raw
+  sensitive contents in artifacts.
 
 ## Status
 

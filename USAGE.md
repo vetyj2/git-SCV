@@ -144,9 +144,10 @@ including common shell, Node, Python, PowerShell, and Ruby execution tokens. It
 does not store raw candidate contents in artifacts.
 
 Each `--sensitive-path` value must be a repository-relative path that Git-SCV
-detected as a sensitive candidate in the same run. Other paths are rejected so a
-user cannot accidentally believe a non-candidate file was reviewed by the
-sensitive-candidate gate.
+detected as a sensitive candidate in the same run. URL-like values such as
+`file://...` are rejected. Other paths are rejected so a user cannot
+accidentally believe a non-candidate file was reviewed by the sensitive
+candidate gate.
 
 ## Interpreting Findings
 
