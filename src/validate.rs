@@ -1,10 +1,10 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02, V03, V04, V06)
+//! validate: 쓰기 전 메모리 검증 (V02–V14)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
-use crate::model::{RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE, SCHEMA_VERSION};
+use crate::model::{Priority, RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE, SCHEMA_VERSION};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -185,6 +185,16 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
     }
 
     if errors.is_empty() {
+        let review_mismatches = review_summary_mismatches(data);
+        if !review_mismatches.is_empty() {
+            errors.push(format!(
+                "V14: review.json 요약 불일치: {}",
+                review_mismatches.join(", ")
+            ));
+        }
+    }
+
+    if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)
@@ -245,6 +255,92 @@ fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
             &data.review.run_id,
         ),
     ]
+}
+
+fn review_summary_mismatches(data: &RunData) -> Vec<&'static str> {
+    let mut mismatches = Vec::new();
+    let counts = &data.review.counts;
+
+    if counts.findings_total != data.findings.findings.len() as u64 {
+        mismatches.push("findings_total");
+    }
+    if counts.high_priority_findings
+        != data
+            .findings
+            .findings
+            .iter()
+            .filter(|finding| finding.priority() == Priority::High)
+            .count() as u64
+    {
+        mismatches.push("high_priority_findings");
+    }
+    if counts.medium_priority_findings
+        != data
+            .findings
+            .findings
+            .iter()
+            .filter(|finding| finding.priority() == Priority::Medium)
+            .count() as u64
+    {
+        mismatches.push("medium_priority_findings");
+    }
+    if counts.sensitive_candidates != data.gates.sensitive_candidates.len() as u64 {
+        mismatches.push("sensitive_candidates");
+    }
+    if counts.automatic_execution_candidates
+        != data.gates.automatic_execution_candidates.len() as u64
+    {
+        mismatches.push("automatic_execution_candidates");
+    }
+    if counts.execution_related_candidates != data.gates.execution_related_candidates.len() as u64 {
+        mismatches.push("execution_related_candidates");
+    }
+    if counts.slices_total != data.slices.slices.len() as u64 {
+        mismatches.push("slices_total");
+    }
+    if counts.slices_over_token_limit
+        != data
+            .slices
+            .slices
+            .iter()
+            .filter(|slice| slice.over_token_limit)
+            .count() as u64
+    {
+        mismatches.push("slices_over_token_limit");
+    }
+
+    let expected_excluded_paths = data
+        .slices
+        .slices
+        .iter()
+        .flat_map(|slice| slice.files.iter())
+        .filter(|file| !file.default_model_input)
+        .map(|file| file.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let actual_excluded_paths = data
+        .review
+        .default_model_excluded_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if actual_excluded_paths != expected_excluded_paths {
+        mismatches.push("default_model_excluded_paths");
+    }
+
+    let expected_verdict = if data.gates.sensitive_raw_review.approval_required
+        || data.gates.execution_review.approval_required
+    {
+        "approval-required"
+    } else if !data.findings.findings.is_empty() {
+        "review-required"
+    } else {
+        "no-findings-within-observed-scope"
+    };
+    if data.review.verdict != expected_verdict {
+        mismatches.push("verdict");
+    }
+
+    mismatches
 }
 
 pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
