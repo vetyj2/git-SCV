@@ -4,7 +4,7 @@
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
-use crate::model::{RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE};
+use crate::model::{RunData, LOW_CONFIDENCE_SENTENCE, NO_EXEC_SENTENCE, SCHEMA_VERSION};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -168,11 +168,83 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         ));
     }
 
+    let mut metadata_mismatches = artifact_metadata(data)
+        .into_iter()
+        .filter(|(_, schema_version, run_id)| {
+            *schema_version != SCHEMA_VERSION || *run_id != data.run_id
+        })
+        .map(|(name, _, _)| name)
+        .collect::<Vec<_>>();
+    if !metadata_mismatches.is_empty() {
+        metadata_mismatches.sort();
+        metadata_mismatches.dedup();
+        errors.push(format!(
+            "V13: 산출물 공통 메타데이터 불일치: {}",
+            metadata_mismatches.join(", ")
+        ));
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)
     }
+}
+
+fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
+    vec![
+        (
+            "source.json",
+            &data.source.schema_version,
+            &data.source.run_id,
+        ),
+        (
+            "inventory.json",
+            &data.inventory.schema_version,
+            &data.inventory.run_id,
+        ),
+        (
+            "coverage.json",
+            &data.coverage.schema_version,
+            &data.coverage.run_id,
+        ),
+        (
+            "evidence.json",
+            &data.evidence.schema_version,
+            &data.evidence.run_id,
+        ),
+        (
+            "findings.json",
+            &data.findings.schema_version,
+            &data.findings.run_id,
+        ),
+        (
+            "dependencies.json",
+            &data.dependencies.schema_version,
+            &data.dependencies.run_id,
+        ),
+        (
+            "sectors.json",
+            &data.sectors.schema_version,
+            &data.sectors.run_id,
+        ),
+        (
+            "sensitive.json",
+            &data.sensitive.schema_version,
+            &data.sensitive.run_id,
+        ),
+        ("gates.json", &data.gates.schema_version, &data.gates.run_id),
+        (
+            "slices.json",
+            &data.slices.schema_version,
+            &data.slices.run_id,
+        ),
+        (
+            "review.json",
+            &data.review.schema_version,
+            &data.review.run_id,
+        ),
+    ]
 }
 
 pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
