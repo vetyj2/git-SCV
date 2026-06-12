@@ -13,9 +13,10 @@ safe.
 git-scv inspect <repo-path> --out <run-dir>
 ```
 
-`<repo-path>` must be a local directory. Remote repository URLs such as
-`https://...` or `git@host:owner/repo.git` are rejected until Git-SCV has an
-explicit snapshot flow.
+`<repo-path>` must be a local directory. Repository URL inputs such as
+`https://...`, `git@host:owner/repo.git`, or `file://...` are rejected until
+Git-SCV has an explicit snapshot flow. Download or clone the repository first,
+then inspect that local directory.
 
 Example:
 
