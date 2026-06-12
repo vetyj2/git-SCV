@@ -2,7 +2,7 @@
 //!
 //! 기존 RunData만 렌더링한다. 대상 저장소 파일을 새로 읽지 않는다.
 
-use crate::model::{Priority, RunData, SensitiveReviewMode, NO_EXEC_SENTENCE};
+use crate::model::{Priority, ReviewAction, RunData, SensitiveReviewMode, NO_EXEC_SENTENCE};
 
 pub fn render(data: &RunData) -> String {
     let findings = if data.findings.findings.is_empty() {
@@ -27,32 +27,7 @@ pub fn render(data: &RunData) -> String {
         )
     };
 
-    let required_actions = data
-        .review
-        .required_actions
-        .iter()
-        .filter(|action| action.required)
-        .map(|action| {
-            let acknowledgements = if action.acknowledgements.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "<span>ack {}</span>",
-                    escape(&action.acknowledgements.join(", "))
-                )
-            };
-            format!(
-                "<li><strong>{}</strong><span>{}개 경로</span>{acknowledgements}</li>",
-                escape(&action.id),
-                action.paths.len()
-            )
-        })
-        .collect::<String>();
-    let required_actions = if required_actions.is_empty() {
-        "<li><strong>필수 액션 없음</strong><span>현재 관찰 범위 기준</span></li>".into()
-    } else {
-        required_actions
-    };
+    let required_actions = required_actions_html(&data.review.required_actions);
 
     format!(
         r#"<!doctype html>
@@ -240,4 +215,94 @@ fn escape(value: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+fn required_actions_html(actions: &[ReviewAction]) -> String {
+    let items = actions
+        .iter()
+        .filter(|action| action.required)
+        .map(|action| {
+            let acknowledgements = if action.acknowledgements.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<span>ack {}</span>",
+                    escape(&action.acknowledgements.join(", "))
+                )
+            };
+            format!(
+                "<li><strong>{}</strong><span>{}개 경로</span>{acknowledgements}</li>",
+                escape(&action.id),
+                action.paths.len()
+            )
+        })
+        .collect::<String>();
+
+    if items.is_empty() {
+        "<li><strong>필수 액션 없음</strong><span>현재 관찰 범위 기준</span></li>".into()
+    } else {
+        items
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::required_actions_html;
+    use crate::model::ReviewAction;
+
+    #[test]
+    fn required_actions_html_lists_required_actions_and_acknowledgements() {
+        let html = required_actions_html(&[
+            action(
+                "sensitive-raw-review",
+                true,
+                vec![".env.sh"],
+                vec![
+                    "review-sensitive-candidates",
+                    "include-approved-sensitive-raw-in-diagnostic-input",
+                ],
+            ),
+            action("execution-review", true, vec!["build.rs"], vec![]),
+            action("not-required", false, vec!["ignored"], vec!["ignored-ack"]),
+        ]);
+
+        assert!(html.contains("<strong>sensitive-raw-review</strong>"));
+        assert!(html.contains("<span>1개 경로</span>"));
+        assert!(html.contains(
+            "ack review-sensitive-candidates, include-approved-sensitive-raw-in-diagnostic-input"
+        ));
+        assert!(html.contains("<strong>execution-review</strong>"));
+        assert!(!html.contains("not-required"));
+        assert!(!html.contains("ignored-ack"));
+    }
+
+    #[test]
+    fn required_actions_html_reports_no_required_actions() {
+        let html = required_actions_html(&[action(
+            "sensitive-raw-review",
+            false,
+            vec![".env"],
+            vec!["review-sensitive-candidates"],
+        )]);
+
+        assert_eq!(
+            html,
+            "<li><strong>필수 액션 없음</strong><span>현재 관찰 범위 기준</span></li>"
+        );
+    }
+
+    fn action(
+        id: &str,
+        required: bool,
+        paths: Vec<&str>,
+        acknowledgements: Vec<&str>,
+    ) -> ReviewAction {
+        ReviewAction {
+            id: id.into(),
+            required,
+            reason: String::new(),
+            paths: paths.into_iter().map(str::to_string).collect(),
+            acknowledgements: acknowledgements.into_iter().map(str::to_string).collect(),
+        }
+    }
 }
