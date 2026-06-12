@@ -8,13 +8,21 @@ use crate::errors::ScvError;
 use crate::evidence::EvidenceStore;
 use crate::model::{
     CoverageArtifact, FindingsArtifact, RunArtifact, RunData, RunStatus, SkipReason, SkipReasons,
-    StageRecord, StageStatus, ToolInfo, SCHEMA_VERSION,
+    SnapshotInfo, StageRecord, StageStatus, ToolInfo, SCHEMA_VERSION,
 };
 use std::fs;
 use std::path::Path;
 use time::OffsetDateTime;
 
 pub fn run(args: InspectArgs) -> Result<(), ScvError> {
+    run_inner(args, None)
+}
+
+pub fn run_with_snapshot(args: InspectArgs, snapshot: SnapshotInfo) -> Result<(), ScvError> {
+    run_inner(args, Some(snapshot))
+}
+
+fn run_inner(args: InspectArgs, snapshot: Option<SnapshotInfo>) -> Result<(), ScvError> {
     crate::cli::validate(&args)?;
     let started = OffsetDateTime::now_utc();
     let started_at = format_rfc3339(started);
@@ -30,7 +38,7 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
         ))
     })?;
 
-    let (source, dirty_unknown) =
+    let (mut source, dirty_unknown) =
         match crate::source::identify(&raw_input, &args.repo_path, &run_id) {
             Ok(value) => {
                 mark_ok(&mut stages, "source");
@@ -48,6 +56,7 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
                 )
             }
         };
+    source.snapshot = snapshot;
 
     let root = Path::new(&source.resolved_path);
     let inventory = match crate::walk::walk(root, &run_id) {

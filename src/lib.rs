@@ -18,6 +18,7 @@ pub mod safety;
 pub mod sectors;
 pub mod sensitive;
 pub mod slices;
+pub mod snapshot;
 pub mod source;
 pub mod validate;
 pub mod walk;

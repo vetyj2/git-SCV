@@ -90,9 +90,10 @@ pub fn parse() -> Invocation {
 /// 이 함수가 Ok를 돌려주기 전에는 어떤 파일도 만들지 않는다.
 pub fn validate(args: &InspectArgs) -> Result<(), ScvError> {
     if is_repo_url_input(&args.repo_path) {
+        let repo_input = args.repo_path.to_string_lossy();
         return usage(format!(
             "오류: 저장소 URL 입력은 아직 지원하지 않는다. 먼저 로컬로 받은 저장소 경로를 지정한다: {}",
-            args.repo_path.display()
+            redact_url_for_error(&repo_input)
         ));
     }
 
@@ -158,26 +159,23 @@ pub fn validate_snapshot(args: &SnapshotArgs) -> Result<(), ScvError> {
             args.out.display()
         ));
     }
+    if url_has_userinfo(&args.url) {
+        return usage("오류: snapshot URL은 사용자 정보를 포함할 수 없다.".into());
+    }
     if !is_https_snapshot_url(&args.url) {
         return usage(format!(
             "오류: snapshot URL은 https:// 원격 압축 주소여야 한다: {}",
-            args.url
+            redact_url_for_error(&args.url)
         ));
-    }
-    if https_url_has_userinfo(&args.url) {
-        return usage("오류: snapshot URL은 사용자 정보를 포함할 수 없다.".into());
     }
     if !is_supported_archive_url(&args.url) {
         return usage(format!(
             "오류: snapshot URL은 .zip, .tar.gz, .tgz 압축 주소여야 한다: {}",
-            args.url
+            redact_url_for_error(&args.url)
         ));
     }
 
-    usage(
-        "오류: snapshot 명령은 아직 구현하지 않았다. 원격 스냅샷은 압축 내려받기와 체크섬 검증 구현 뒤에만 사용할 수 있다."
-            .into(),
-    )
+    Ok(())
 }
 
 fn is_sha256_hex(value: &str) -> bool {
@@ -188,13 +186,14 @@ fn is_https_snapshot_url(value: &str) -> bool {
     value.to_ascii_lowercase().starts_with("https://")
 }
 
-fn https_url_has_userinfo(value: &str) -> bool {
-    let Some(after_scheme) = value.get("https://".len()..) else {
+fn url_has_userinfo(value: &str) -> bool {
+    let Some((_scheme, after_scheme)) = value.split_once("://") else {
         return false;
     };
-    let authority = after_scheme
-        .split_once('/')
-        .map_or(after_scheme, |(before_path, _)| before_path);
+    let authority_end = after_scheme
+        .find(['/', '?', '#'])
+        .unwrap_or(after_scheme.len());
+    let authority = &after_scheme[..authority_end];
     authority.contains('@')
 }
 
@@ -206,6 +205,48 @@ fn is_supported_archive_url(value: &str) -> bool {
         .map_or(value, |(before_query, _)| before_query)
         .to_ascii_lowercase();
     path.ends_with(".zip") || path.ends_with(".tar.gz") || path.ends_with(".tgz")
+}
+
+fn redact_url_for_error(value: &str) -> String {
+    let (without_fragment, had_fragment) = match value.split_once('#') {
+        Some((before, _)) => (before, true),
+        None => (value, false),
+    };
+    let (without_query, had_query) = match without_fragment.split_once('?') {
+        Some((before, _)) => (before, true),
+        None => (without_fragment, false),
+    };
+
+    let mut redacted = redact_url_userinfo(without_query)
+        .or_else(|| redact_scp_like_userinfo(without_query))
+        .unwrap_or_else(|| without_query.into());
+    if had_query {
+        redacted.push_str("?...");
+    }
+    if had_fragment {
+        redacted.push_str("#...");
+    }
+    redacted
+}
+
+fn redact_url_userinfo(value: &str) -> Option<String> {
+    let (scheme, after_scheme) = value.split_once("://")?;
+    let authority_start = scheme.len() + "://".len();
+    let path_start = after_scheme
+        .find('/')
+        .map_or(value.len(), |offset| authority_start + offset);
+    let authority = &value[authority_start..path_start];
+    let (_userinfo, host) = authority.rsplit_once('@')?;
+    Some(format!("{}://***@{}{}", scheme, host, &value[path_start..]))
+}
+
+fn redact_scp_like_userinfo(value: &str) -> Option<String> {
+    let (user_host, repo_part) = value.split_once(':')?;
+    let (_userinfo, host) = user_host.rsplit_once('@')?;
+    if host.contains(std::path::MAIN_SEPARATOR) || repo_part.is_empty() {
+        return None;
+    }
+    Some(format!("***@{}:{}", host, repo_part))
 }
 
 fn usage<T>(message: String) -> Result<T, ScvError> {

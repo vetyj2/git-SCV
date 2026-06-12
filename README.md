@@ -36,18 +36,21 @@ git-scv inspect <repo-path> --out <run-dir>
 ```
 
 `<repo-path>` must be a local directory. Repository URL inputs such as
-`https://...`, `git@host:owner/repo.git`, and `file://...` are rejected until
-the snapshot flow is implemented. Download or clone the repository first, then
-inspect that local directory.
+`https://...`, `git@host:owner/repo.git`, and `file://...` are rejected by
+`inspect`. Download or clone the repository first, then inspect that local
+directory.
 
-The `inspect` command never fetches from a remote. A future snapshot command
-will be separate from `inspect` and is planned to use archive download plus a
-user-provided checksum before handing a local snapshot to the inspector.
-The reserved `snapshot` command already enforces the checksum boundary, but it
-does not download remote content yet. Its `--sha256` value must be a 64-character
-hex SHA-256 digest, its URL must start with `https://` and end with `.zip`,
-`.tar.gz`, or `.tgz`, it must not include URL user information, and its output
-directory must be new or empty.
+The `inspect` command never fetches from a remote. The separate `snapshot`
+command downloads an HTTPS archive in memory, checks it against a user-provided
+SHA-256 digest, and extracts only safe `.zip`, `.tar.gz`, or `.tgz` entries into
+`<snapshot-dir>/source`, then writes the normal inspection artifacts to
+`<snapshot-dir>/run`. Its `--sha256` value must be a 64-character hex SHA-256
+digest, its URL must start with `https://`, it must not include URL user
+information, and its output directory must be new or empty. URL validation errors
+redact user information and query or fragment details. Snapshot inspection writes
+sanitized snapshot metadata to `run/source.json`, including the archive URL
+without query or fragment details, the verified SHA-256 digest, archive format,
+and extracted source path.
 
 For the recommended review flow and artifact reading order, see
 [USAGE.md](USAGE.md).

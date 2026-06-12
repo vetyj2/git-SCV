@@ -83,13 +83,21 @@ pub struct GitInfo {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct SnapshotInfo {
+    pub url: String,
+    pub sha256: String,
+    pub archive_format: String,
+    pub extracted_path: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct SourceArtifact {
     pub schema_version: String,
     pub run_id: String,
     pub input: InputInfo,
     pub resolved_path: String,
     pub git: Option<GitInfo>,
-    pub snapshot: Option<String>, // 최소 기능판에서 항상 None (0305)
+    pub snapshot: Option<SnapshotInfo>,
 }
 
 // ---------------------------------------------------------- inventory.json

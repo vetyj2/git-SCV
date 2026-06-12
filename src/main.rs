@@ -10,6 +10,6 @@ fn main() {
 fn run() -> Result<(), git_scv::errors::ScvError> {
     match git_scv::cli::parse() {
         git_scv::cli::Invocation::Inspect(args) => git_scv::inspect::run(args),
-        git_scv::cli::Invocation::Snapshot(args) => git_scv::cli::validate_snapshot(&args),
+        git_scv::cli::Invocation::Snapshot(args) => git_scv::snapshot::run(args),
     }
 }
