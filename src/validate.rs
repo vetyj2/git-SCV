@@ -1,6 +1,6 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02–V15)
+//! validate: 쓰기 전 메모리 검증 (V02–V16)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
@@ -99,6 +99,12 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         errors.push("V08: 승인 프롬프트 경로 불일치".into());
     }
 
+    let inventory_paths = data
+        .inventory
+        .entries
+        .iter()
+        .map(|entry| entry.path.as_str())
+        .collect::<BTreeSet<_>>();
     let inventory_files = data
         .inventory
         .entries
@@ -167,6 +173,24 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         errors.push(format!(
             "V12: 인벤토리에 없는 의존성 매니페스트 경로: {}",
             unknown_dependency_manifests.join(", ")
+        ));
+    }
+
+    let mut unknown_gate_paths = data
+        .gates
+        .sensitive_candidates
+        .iter()
+        .chain(data.gates.automatic_execution_candidates.iter())
+        .chain(data.gates.execution_related_candidates.iter())
+        .filter(|item| !inventory_paths.contains(item.path.as_str()))
+        .map(|item| item.path.as_str())
+        .collect::<Vec<_>>();
+    if !unknown_gate_paths.is_empty() {
+        unknown_gate_paths.sort();
+        unknown_gate_paths.dedup();
+        errors.push(format!(
+            "V16: 인벤토리에 없는 게이트 후보 경로: {}",
+            unknown_gate_paths.join(", ")
         ));
     }
 
