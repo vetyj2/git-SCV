@@ -137,14 +137,24 @@ pub fn validate(args: &InspectArgs) -> Result<(), ScvError> {
 }
 
 pub fn validate_snapshot(args: &SnapshotArgs) -> Result<(), ScvError> {
-    if args.sha256.as_deref().is_none_or(str::is_empty) {
+    let Some(sha256) = args.sha256.as_deref() else {
         return usage("오류: snapshot 명령은 --sha256 체크섬이 필요하다.".into());
+    };
+    if sha256.is_empty() {
+        return usage("오류: snapshot 명령은 --sha256 체크섬이 필요하다.".into());
+    }
+    if !is_sha256_hex(sha256) {
+        return usage("오류: snapshot 명령의 --sha256 값은 64자리 hex여야 한다.".into());
     }
 
     usage(
         "오류: snapshot 명령은 아직 구현하지 않았다. 원격 스냅샷은 압축 내려받기와 체크섬 검증 구현 뒤에만 사용할 수 있다."
             .into(),
     )
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn usage<T>(message: String) -> Result<T, ScvError> {
