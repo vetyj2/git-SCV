@@ -18,6 +18,10 @@ git-scv inspect <repo-path> --out <run-dir>
 Git-SCV has an explicit snapshot flow. Download or clone the repository first,
 then inspect that local directory.
 
+The `inspect` command never fetches from a remote. A future snapshot command
+will be separate from `inspect` and is planned to use archive download plus a
+user-provided checksum before handing a local snapshot to the inspector.
+
 Example:
 
 ```sh
@@ -182,7 +186,7 @@ Git-SCV does not:
 - run hooks
 - run binaries
 - build or run containers
-- fetch from remotes
+- fetch from remotes during `inspect`
 - prove that a repository is safe
 
 Use Git-SCV as the first review step, then decide what to inspect or approve
