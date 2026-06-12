@@ -55,7 +55,7 @@ pub fn render(data: &RunData) -> String {
 - 슬라이스: {slice_count}개\n\
 - 슬라이스당 최대 추정 토큰: {slice_limit}\n\
 - 한도 초과 단일 파일 슬라이스: {over_limit_slices}개\n\
-- 기본 모델 입력 정책: 민감 후보 제외\n\n\
+- 기본 모델 입력 정책: 민감 후보와 실행 후보 제외\n\n\
 ## 기계 요약\n\n\
 - 검토 판정: {review_verdict}\n\
 - 필요한 후속 액션: {required_actions}개\n\n\

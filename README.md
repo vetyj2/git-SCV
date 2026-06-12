@@ -90,6 +90,8 @@ repository.
 7. Check `gates.json` before model input, install, build, test, or run
    approval.
 8. Use `slices.json` as a path-only reading plan for later model input.
+   Sensitive, automatic-execution, and execution-related candidates are excluded
+   from default model input until separately approved.
 9. Use `review.json` for machine-readable totals, verdict, and required
    actions.
 10. Open `report.html` when a browser-friendly run report is useful.

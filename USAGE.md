@@ -51,6 +51,8 @@ those URLs to artifacts.
 7. Open `gates.json` before model input or any install, build, test, script,
    hook, binary, or container approval request.
 8. Use `slices.json` as the path-only reading plan for later model input.
+   Sensitive, automatic-execution, and execution-related candidates are excluded
+   from default model input until separately approved.
 9. Use `review.json` for machine-readable totals, verdict, and required
    actions.
 10. Treat `secret-candidate` findings as unresolved review items.
@@ -93,7 +95,8 @@ Use them in this order:
    redacted review signals.
 9. `gates.json`: sensitive raw-review and execution approval candidate lists.
 10. `slices.json`: path-only reading slices derived from `sectors.json` and
-   `gates.json`.
+   `gates.json`; sensitive and execution candidates are excluded from default
+   model input until separately approved.
 11. `review.json`: machine-readable verdict, totals, and required actions.
 12. `report.md`: human-readable Markdown summary.
 13. `report.html`: browser-friendly human-readable summary.

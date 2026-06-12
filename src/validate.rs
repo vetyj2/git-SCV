@@ -1,6 +1,6 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02–V18)
+//! validate: 쓰기 전 메모리 검증 (V02–V19)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
@@ -147,6 +147,7 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         .collect::<BTreeSet<_>>();
     let mut unknown_slice_paths = Vec::new();
     let mut unsafe_sensitive_slice_paths = Vec::new();
+    let mut unsafe_execution_slice_paths = Vec::new();
     let mut slice_flag_mismatch = Vec::new();
     for slice in &data.slices.slices {
         let requires_sensitive = slice.files.iter().any(|file| file.sensitive_candidate);
@@ -166,6 +167,11 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
             if file.sensitive_candidate && file.default_model_input {
                 unsafe_sensitive_slice_paths.push(file.path.as_str());
             }
+            if (file.automatic_execution_candidate || file.execution_related_candidate)
+                && file.default_model_input
+            {
+                unsafe_execution_slice_paths.push(file.path.as_str());
+            }
         }
     }
     if !unknown_slice_paths.is_empty() {
@@ -182,6 +188,14 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         errors.push(format!(
             "V10: 민감 후보 기본 모델 입력 허용: {}",
             unsafe_sensitive_slice_paths.join(", ")
+        ));
+    }
+    if !unsafe_execution_slice_paths.is_empty() {
+        unsafe_execution_slice_paths.sort();
+        unsafe_execution_slice_paths.dedup();
+        errors.push(format!(
+            "V19: 실행 후보 기본 모델 입력 허용: {}",
+            unsafe_execution_slice_paths.join(", ")
         ));
     }
     if !slice_flag_mismatch.is_empty() {

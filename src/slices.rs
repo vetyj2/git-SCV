@@ -60,7 +60,8 @@ pub fn build(
             source_order: "sectors.suggested_read_order".into(),
             max_estimated_tokens_per_slice: MAX_ESTIMATED_TOKENS_PER_SLICE,
             default_model_input:
-                "sensitive candidates are listed but excluded unless separately approved".into(),
+                "sensitive and execution candidates are listed but excluded unless separately approved"
+                    .into(),
         },
         slices: pack_slices(ordered),
         note: "슬라이스는 후속 모델 입력 계획이며 파일 본문을 포함하지 않는다. 단일 파일이 한도를 넘으면 별도 슬라이스로 두고 over_token_limit=true로 표시한다.".into(),
@@ -80,15 +81,19 @@ fn push_slice_file(
     }
     let bytes = entry.size.unwrap_or(0);
     let sensitive_candidate = sensitive.contains(&entry.path);
+    let automatic_execution_candidate = automatic_execution.contains(&entry.path);
+    let execution_related_candidate = execution_related.contains(&entry.path);
+    let requires_approval =
+        sensitive_candidate || automatic_execution_candidate || execution_related_candidate;
     out.push(SliceFile {
         path: entry.path.clone(),
         bytes,
         estimated_tokens: bytes.div_ceil(4),
         sector: sector_name(&entry.path),
-        default_model_input: !sensitive_candidate,
+        default_model_input: !requires_approval,
         sensitive_candidate,
-        automatic_execution_candidate: automatic_execution.contains(&entry.path),
-        execution_related_candidate: execution_related.contains(&entry.path),
+        automatic_execution_candidate,
+        execution_related_candidate,
     });
 }
 
