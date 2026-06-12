@@ -40,7 +40,7 @@ pub fn build(
         run_id: run_id.into(),
         sensitive_raw_review: GatePrompt {
             approval_required: !sensitive_paths.is_empty(),
-            message: "민감 후보 원문을 모델 입력 또는 진단 입력에 포함하려면 1차 민감 후보 진단 승인과 2차 경로별 원문 포함 승인을 받아야 한다. 승인 질문에는 paths 목록을 그대로 보여준다.".into(),
+            message: "민감 후보 원문을 모델 입력 또는 진단 입력에 포함하려면 --approve-sensitive-review, --sensitive-review-ack review-sensitive-candidates, --approve-sensitive-raw, --sensitive-raw-ack include-approved-sensitive-raw-in-diagnostic-input, 경로별 --sensitive-path 승인이 모두 필요하다. 승인 질문에는 paths 목록을 그대로 보여준다.".into(),
             paths: sensitive_paths,
         },
         execution_review: GatePrompt {
