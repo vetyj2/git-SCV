@@ -151,6 +151,7 @@ pub fn render(data: &RunData) -> String {
         <div class="item"><div class="label">판정</div><div class="value verdict">{verdict}</div></div>
         <div class="item"><div class="label">발견사항</div><div class="value">{findings_total}</div></div>
         <div class="item"><div class="label">민감 후보</div><div class="value">{sensitive_count}</div></div>
+        <div class="item"><div class="label">깊은 분석 후보</div><div class="value">{deep_analysis_candidates}</div></div>
         <div class="item"><div class="label">슬라이스</div><div class="value">{slice_count}</div></div>
         <div class="item"><div class="label">의존성 이름</div><div class="value">{dependency_count}</div></div>
       </div>
@@ -188,6 +189,7 @@ pub fn render(data: &RunData) -> String {
         verdict = escape(&data.review.verdict),
         findings_total = data.review.counts.findings_total,
         sensitive_count = data.review.counts.sensitive_candidates,
+        deep_analysis_candidates = data.review.counts.deep_analysis_candidates,
         slice_count = data.review.counts.slices_total,
         dependency_count = data
             .dependencies

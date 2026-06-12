@@ -1,6 +1,6 @@
 //! 검증 관문.
 //!
-//! validate: 쓰기 전 메모리 검증 (V02–V19)
+//! validate: 쓰기 전 메모리 검증 (V02–V23)
 //! verify_outputs: 쓰기 후 디스크 검증 (V01, V05) — 이 함수만 IO 예외다
 //! (architecture.md 1절). 실패 문자열은 사양의 표 그대로 만든다.
 
@@ -145,10 +145,20 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         .filter(|entry| entry.kind == crate::model::EntryKind::File)
         .map(|entry| entry.path.as_str())
         .collect::<BTreeSet<_>>();
+    let inventory_file_entries = data
+        .inventory
+        .entries
+        .iter()
+        .filter(|entry| entry.kind == crate::model::EntryKind::File)
+        .map(|entry| (entry.path.as_str(), entry))
+        .collect::<BTreeMap<_, _>>();
     let mut unknown_slice_paths = Vec::new();
     let mut unsafe_sensitive_slice_paths = Vec::new();
     let mut unsafe_execution_slice_paths = Vec::new();
     let mut slice_flag_mismatch = Vec::new();
+    let mut slice_language_mismatch = Vec::new();
+    let mut duplicate_slice_paths = Vec::new();
+    let mut slice_seen_paths = BTreeSet::new();
     for slice in &data.slices.slices {
         let requires_sensitive = slice.files.iter().any(|file| file.sensitive_candidate);
         let requires_execution = slice
@@ -161,8 +171,19 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
             slice_flag_mismatch.push(slice.id.as_str());
         }
         for file in &slice.files {
+            if !slice_seen_paths.insert(file.path.as_str()) {
+                duplicate_slice_paths.push(file.path.as_str());
+            }
             if !inventory_files.contains(file.path.as_str()) {
                 unknown_slice_paths.push(file.path.as_str());
+            } else if let Some(entry) = inventory_file_entries.get(file.path.as_str()) {
+                let expected_language = crate::language::language_hint(entry);
+                let expected_deep = crate::language::is_deep_analysis_candidate(expected_language);
+                if file.language_hint.as_deref() != expected_language
+                    || file.deep_analysis_candidate != expected_deep
+                {
+                    slice_language_mismatch.push(file.path.as_str());
+                }
             }
             if file.sensitive_candidate && file.default_model_input {
                 unsafe_sensitive_slice_paths.push(file.path.as_str());
@@ -205,6 +226,78 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
             "V11: 슬라이스 승인 플래그 불일치: {}",
             slice_flag_mismatch.join(", ")
         ));
+    }
+    if !slice_language_mismatch.is_empty() {
+        slice_language_mismatch.sort();
+        slice_language_mismatch.dedup();
+        errors.push(format!(
+            "V20: 슬라이스 언어 힌트 불일치: {}",
+            slice_language_mismatch.join(", ")
+        ));
+    }
+    if !duplicate_slice_paths.is_empty() {
+        duplicate_slice_paths.sort();
+        duplicate_slice_paths.dedup();
+        errors.push(format!(
+            "V23: 중복 슬라이스 파일 경로: {}",
+            duplicate_slice_paths.join(", ")
+        ));
+    }
+
+    let mut sector_read_order_unknown_paths = Vec::new();
+    let mut sector_read_order_duplicates = Vec::new();
+    let mut sector_seen = BTreeSet::new();
+    for path in &data.sectors.suggested_read_order {
+        if !inventory_files.contains(path.as_str()) {
+            sector_read_order_unknown_paths.push(path.as_str());
+        }
+        if !sector_seen.insert(path.as_str()) {
+            sector_read_order_duplicates.push(path.as_str());
+        }
+    }
+    if !sector_read_order_unknown_paths.is_empty() || !sector_read_order_duplicates.is_empty() {
+        sector_read_order_unknown_paths.sort();
+        sector_read_order_unknown_paths.dedup();
+        sector_read_order_duplicates.sort();
+        sector_read_order_duplicates.dedup();
+        let mut parts = Vec::new();
+        if !sector_read_order_unknown_paths.is_empty() {
+            parts.push(format!(
+                "unknown={}",
+                sector_read_order_unknown_paths.join(", ")
+            ));
+        }
+        if !sector_read_order_duplicates.is_empty() {
+            parts.push(format!(
+                "duplicate={}",
+                sector_read_order_duplicates.join(", ")
+            ));
+        }
+        errors.push(format!("V21: 읽기 순서 경로 불일치: {}", parts.join("; ")));
+    }
+
+    if data.slices.policy.source_order == "sectors.suggested_read_order" {
+        let slice_order = data
+            .slices
+            .slices
+            .iter()
+            .flat_map(|slice| slice.files.iter())
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>();
+        let mut order_mismatch = Vec::new();
+        for (index, expected) in data.sectors.suggested_read_order.iter().enumerate() {
+            match slice_order.get(index) {
+                Some(actual) if actual == expected => {}
+                Some(actual) => order_mismatch.push(format!("{expected}!={actual}")),
+                None => order_mismatch.push(format!("{expected}=missing")),
+            }
+        }
+        if !order_mismatch.is_empty() {
+            errors.push(format!(
+                "V22: 슬라이스 읽기 순서 불일치: {}",
+                order_mismatch.join(", ")
+            ));
+        }
     }
 
     let mut unknown_dependency_manifests = data
@@ -391,6 +484,17 @@ fn review_summary_mismatches(data: &RunData) -> Vec<&'static str> {
     }
     if counts.execution_related_candidates != data.gates.execution_related_candidates.len() as u64 {
         mismatches.push("execution_related_candidates");
+    }
+    if counts.deep_analysis_candidates
+        != data
+            .slices
+            .slices
+            .iter()
+            .flat_map(|slice| slice.files.iter())
+            .filter(|file| file.deep_analysis_candidate)
+            .count() as u64
+    {
+        mismatches.push("deep_analysis_candidates");
     }
     if counts.slices_total != data.slices.slices.len() as u64 {
         mismatches.push("slices_total");

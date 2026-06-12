@@ -35,6 +35,12 @@ pub fn build(
         .iter()
         .filter(|slice| slice.over_token_limit)
         .count() as u64;
+    let deep_analysis_candidates = slices
+        .slices
+        .iter()
+        .flat_map(|slice| slice.files.iter())
+        .filter(|file| file.deep_analysis_candidate)
+        .count() as u64;
 
     let default_model_excluded_paths = slices
         .slices
@@ -61,6 +67,7 @@ pub fn build(
             sensitive_candidates: gates.sensitive_candidates.len() as u64,
             automatic_execution_candidates: gates.automatic_execution_candidates.len() as u64,
             execution_related_candidates: gates.execution_related_candidates.len() as u64,
+            deep_analysis_candidates,
             slices_total: slices.slices.len() as u64,
             slices_over_token_limit,
         },

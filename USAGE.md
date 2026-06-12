@@ -7,7 +7,7 @@ Git-SCV is a no-exec inspection tool. It reports observed files, evidence,
 findings, skipped areas, and limits. It does not prove that a repository is
 safe.
 
-## Basic Command
+## Local Inspection
 
 ```sh
 git-scv inspect <repo-path> --out <run-dir>
@@ -17,18 +17,6 @@ git-scv inspect <repo-path> --out <run-dir>
 `https://...`, `git@host:owner/repo.git`, or `file://...` are rejected by
 `inspect`. Download or clone the repository first, then inspect that local
 directory.
-
-The `inspect` command never fetches from a remote. The separate `snapshot`
-command downloads an HTTPS archive in memory, checks it against a user-provided
-SHA-256 digest, and extracts only safe `.zip`, `.tar.gz`, or `.tgz` entries into
-`<snapshot-dir>/source`, then writes the normal inspection artifacts to
-`<snapshot-dir>/run`. It refuses requests without `--sha256`, requires a
-64-character hex SHA-256 digest, accepts only `https://` archive URLs, rejects
-URL user information, and requires its output directory to be new or empty. URL
-validation errors redact user information and query or fragment details. For
-successful snapshot runs, `run/source.json` records sanitized snapshot metadata:
-the archive URL without query or fragment details, the verified SHA-256 digest,
-archive format, and extracted source path.
 
 Example:
 
@@ -43,6 +31,29 @@ repository.
 `source.json` may include git remote URLs from the local repository. Git-SCV
 redacts URL user information, including token-like userinfo, before writing
 those URLs to artifacts.
+
+## Snapshot Inspection
+
+Use `snapshot` when you have an HTTPS archive URL and a SHA-256 digest verified
+through a separate channel.
+
+```sh
+git-scv snapshot <archive-url> --out <snapshot-dir> --sha256 <hex>
+```
+
+The `inspect` command never fetches from a remote. The separate `snapshot`
+command downloads an HTTPS archive in memory, checks it against the
+user-provided SHA-256 digest, and extracts only safe `.zip`, `.tar.gz`, or
+`.tgz` entries into `<snapshot-dir>/source`, then writes the normal inspection
+artifacts to `<snapshot-dir>/run`. It refuses requests without `--sha256`,
+requires a 64-character hex SHA-256 digest, accepts only `https://` archive
+URLs, rejects URL user information, and requires its output directory to be new
+or empty. URL validation errors redact user information and query or fragment
+details.
+
+For successful snapshot runs, `run/source.json` records sanitized snapshot
+metadata: the archive URL without query or fragment details, the verified
+SHA-256 digest, archive format, and extracted source path.
 
 ## Recommended Review Flow
 
@@ -101,17 +112,20 @@ Use them in this order:
 5. `evidence.json`: evidence records referenced by findings.
 6. `dependencies.json`: direct dependency names and source kinds from readable
    manifests; raw specs are not stored.
-7. `sectors.json`: suggested reading plan for deeper manual review.
+7. `sectors.json`: suggested reading plan for deeper manual review. Manifest,
+   automatic-execution, entrypoint, and language deep-analysis candidates are
+   ordered before the remaining size-sorted files.
 8. `sensitive.json`: sensitive-candidate mode, approvals, ack confirmations,
    candidates, and redacted review signals.
 9. `gates.json`: sensitive raw-review and execution approval candidate lists,
    including execution approval before model input and structured sensitive
    review ack strings.
 10. `slices.json`: path-only reading slices derived from `sectors.json` and
-   `gates.json`; sensitive and execution candidates are excluded from default
-   model input until separately approved.
-11. `review.json`: machine-readable verdict, totals, required actions, and
-   structured approval acknowledgements.
+   `gates.json`; each file may include a path or extension based language hint
+   and deep-analysis candidate flag. Sensitive and execution candidates are
+   excluded from default model input until separately approved.
+11. `review.json`: machine-readable verdict, totals including deep-analysis
+   candidate count, required actions, and structured approval acknowledgements.
 12. `report.md`: human-readable Markdown summary, including sensitive review
    ack status.
 13. `report.html`: browser-friendly human-readable summary, including

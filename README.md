@@ -33,6 +33,7 @@ cargo build
 
 ```sh
 git-scv inspect <repo-path> --out <run-dir>
+git-scv snapshot <archive-url> --out <snapshot-dir> --sha256 <hex>
 ```
 
 `<repo-path>` must be a local directory. Repository URL inputs such as
@@ -52,8 +53,8 @@ sanitized snapshot metadata to `run/source.json`, including the archive URL
 without query or fragment details, the verified SHA-256 digest, archive format,
 and extracted source path.
 
-For the recommended review flow and artifact reading order, see
-[USAGE.md](USAGE.md).
+For detailed command examples, sensitive-candidate modes, and artifact reading
+order, see [USAGE.md](USAGE.md).
 
 The output directory must be new or empty. Git-SCV does not execute install,
 build, test, script, hook, binary, or container commands from the inspected
@@ -82,35 +83,21 @@ report.md
 report.html
 ```
 
-## Recommended Workflow
+## Recommended Use
 
 Use Git-SCV before installing, building, testing, or running an unfamiliar
 repository.
 
-1. Run `git-scv inspect <repo-path> --out <run-dir>`.
-2. Read `report.md` first for the human summary, including sensitive review ack
-   status.
-3. Check `coverage.json` to see what was inspected, skipped, or left unknown.
-4. For each finding, follow the evidence IDs from `findings.json` to
-   `evidence.json`.
-5. Check `dependencies.json` for direct dependency names and source kinds. Raw
-   version ranges, URLs, git addresses, and local paths are not stored.
-6. Check `sensitive.json` before raw sensitive-candidate review; it records
-   approval and ack confirmation state.
-7. Check `gates.json` before model input, install, build, test, or run
-   approval; execution candidates also require approval before model input.
-   Sensitive-review ack strings are also exposed as structured
-   `acknowledgements`.
-8. Use `slices.json` as a path-only reading plan for later model input.
-   Sensitive, automatic-execution, and execution-related candidates are excluded
-   from default model input until separately approved.
-9. Use `review.json` for machine-readable totals, verdict, and required
-   actions, including any structured approval acknowledgements.
-10. Open `report.html` when a browser-friendly run report is useful; it also
-   shows sensitive review ack status and required ack strings.
-11. Treat `secret-candidate` findings as unresolved review items, not as safe or
+1. Use `inspect` when the repository is already on disk.
+2. Use `snapshot` only when you have an HTTPS archive URL and a SHA-256 digest
+   verified through a separate channel.
+3. Read `report.md` or `report.html` first, then check `coverage.json`,
+   `findings.json`, `evidence.json`, `dependencies.json`, `sensitive.json`,
+   `gates.json`, `slices.json`, and `review.json` before approving any next
+   action.
+4. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-12. Ask for explicit approval before running install, build, test, script, hook,
+5. Ask for explicit approval before running install, build, test, script, hook,
    binary, or container commands from the inspected repository.
 
 ## Sensitive Candidates

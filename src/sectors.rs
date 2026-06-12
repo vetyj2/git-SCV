@@ -2,10 +2,11 @@
 //!
 //! 에이전트의 읽기 계획 보조 자료다. 섹터 = 최상위 디렉터리, 루트 직속
 //! 파일은 "(root)". 추정 토큰 = ceil(bytes / 4). 권장 읽기 순서는
-//! 매니페스트 → 자동 실행 지점 → 진입점 후보 → 크기 오름차순, 최대 200개.
+//! 매니페스트 → 자동 실행 지점 → 진입점 후보 → 깊은 분석 후보 →
+//! 크기 오름차순, 최대 200개.
 
 use crate::model::{
-    Detection, EntryKind, InventoryArtifact, RuleId, Sector, SectorsArtifact, SCHEMA_VERSION,
+    Detection, Entry, EntryKind, InventoryArtifact, RuleId, Sector, SectorsArtifact, SCHEMA_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -90,12 +91,19 @@ fn sector_sort_key(name: &str) -> (u8, &str) {
 fn suggested_read_order(inventory: &InventoryArtifact, detections: &[Detection]) -> Vec<String> {
     let mut order = Vec::new();
     let mut seen = BTreeSet::new();
+    let file_paths = inventory
+        .entries
+        .iter()
+        .filter(|entry| entry.kind == EntryKind::File)
+        .map(|entry| entry.path.as_str())
+        .collect::<BTreeSet<_>>();
 
     push_detection_paths(
         &mut order,
         &mut seen,
         detections,
         &[RuleId::D01, RuleId::D03, RuleId::D04],
+        &file_paths,
     );
     push_detection_paths(
         &mut order,
@@ -108,11 +116,14 @@ fn suggested_read_order(inventory: &InventoryArtifact, detections: &[Detection])
             RuleId::D11,
             RuleId::D12,
         ],
+        &file_paths,
     );
 
     for candidate in [
         "src/main.rs",
         "src/lib.rs",
+        "src/index.js",
+        "src/index.ts",
         "main.py",
         "app.py",
         "index.js",
@@ -123,6 +134,7 @@ fn suggested_read_order(inventory: &InventoryArtifact, detections: &[Detection])
             push_unique(&mut order, &mut seen, candidate);
         }
     }
+    push_deep_analysis_candidates(&mut order, &mut seen, inventory);
 
     let mut remaining = inventory
         .entries
@@ -142,16 +154,59 @@ fn suggested_read_order(inventory: &InventoryArtifact, detections: &[Detection])
     order
 }
 
+fn push_deep_analysis_candidates(
+    order: &mut Vec<String>,
+    seen: &mut BTreeSet<String>,
+    inventory: &InventoryArtifact,
+) {
+    let mut candidates = inventory
+        .entries
+        .iter()
+        .filter(|entry| entry.kind == EntryKind::File)
+        .filter(|entry| {
+            crate::language::is_deep_analysis_candidate(crate::language::language_hint(entry))
+        })
+        .collect::<Vec<_>>();
+    candidates
+        .sort_by(|left, right| deep_analysis_sort_key(left).cmp(&deep_analysis_sort_key(right)));
+    for entry in candidates {
+        push_unique(order, seen, &entry.path);
+    }
+}
+
+fn deep_analysis_sort_key(entry: &Entry) -> (u8, &'static str, u64, &str) {
+    (
+        deep_analysis_entry_rank(&entry.path),
+        crate::language::language_hint(entry).unwrap_or(""),
+        entry.size.unwrap_or(0),
+        entry.path.as_str(),
+    )
+}
+
+fn deep_analysis_entry_rank(path: &str) -> u8 {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let stem = name.split('.').next().unwrap_or(name);
+    if matches!(stem, "main" | "index" | "app" | "lib" | "mod")
+        && (path.starts_with("src/") || !path.contains('/'))
+    {
+        0
+    } else {
+        1
+    }
+}
+
 fn push_detection_paths(
     order: &mut Vec<String>,
     seen: &mut BTreeSet<String>,
     detections: &[Detection],
     rules: &[RuleId],
+    file_paths: &BTreeSet<&str>,
 ) {
     let mut paths = detections
         .iter()
         .filter(|detection| rules.contains(&detection.rule))
         .map(|detection| detection.path.as_str())
+        .filter(|path| file_paths.contains(path))
         .collect::<Vec<_>>();
     paths.sort();
     paths.dedup();

@@ -54,6 +54,7 @@ pub fn render(data: &RunData) -> String {
 - 자동 실행 후보: {auto_exec_count}개 / 실행 관련 후보: {execution_related_count}개\n\n\
 ## 읽기 슬라이스\n\n\
 - 슬라이스: {slice_count}개\n\
+- 깊은 분석 후보: {deep_analysis_candidates}개\n\
 - 슬라이스당 최대 추정 토큰: {slice_limit}\n\
 - 한도 초과 단일 파일 슬라이스: {over_limit_slices}개\n\
 - 기본 모델 입력 정책: 민감 후보와 실행 후보 제외\n\n\
@@ -93,6 +94,7 @@ pub fn render(data: &RunData) -> String {
         auto_exec_count = data.gates.automatic_execution_candidates.len(),
         execution_related_count = data.gates.execution_related_candidates.len(),
         slice_count = data.slices.slices.len(),
+        deep_analysis_candidates = data.review.counts.deep_analysis_candidates,
         slice_limit = data.slices.policy.max_estimated_tokens_per_slice,
         over_limit_slices = data
             .slices

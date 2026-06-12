@@ -11,6 +11,7 @@ pub mod evidence;
 pub mod findings;
 pub mod gates;
 pub mod inspect;
+pub mod language;
 pub mod model;
 pub mod report;
 pub mod review;

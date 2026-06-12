@@ -4,6 +4,7 @@
 //! `gates.json`의 승인 후보 목록을 조합해, 후속 에이전트가 작은 단위로
 //! 읽을 수 있는 경로 묶음만 만든다.
 
+use crate::language::{is_deep_analysis_candidate, language_hint};
 use crate::model::{
     Entry, EntryKind, GateArtifact, InventoryArtifact, SectorsArtifact, Slice, SliceArtifact,
     SliceFile, SlicePolicy, SCHEMA_VERSION,
@@ -85,11 +86,14 @@ fn push_slice_file(
     let execution_related_candidate = execution_related.contains(&entry.path);
     let requires_approval =
         sensitive_candidate || automatic_execution_candidate || execution_related_candidate;
+    let language_hint = language_hint(entry);
     out.push(SliceFile {
         path: entry.path.clone(),
         bytes,
         estimated_tokens: bytes.div_ceil(4),
         sector: sector_name(&entry.path),
+        language_hint: language_hint.map(str::to_string),
+        deep_analysis_candidate: is_deep_analysis_candidate(language_hint),
         default_model_input: !requires_approval,
         sensitive_candidate,
         automatic_execution_candidate,

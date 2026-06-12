@@ -485,6 +485,8 @@ pub struct SliceFile {
     pub bytes: u64,
     pub estimated_tokens: u64,
     pub sector: String,
+    pub language_hint: Option<String>,
+    pub deep_analysis_candidate: bool,
     pub default_model_input: bool,
     pub sensitive_candidate: bool,
     pub automatic_execution_candidate: bool,
@@ -520,6 +522,7 @@ pub struct ReviewCounts {
     pub sensitive_candidates: u64,
     pub automatic_execution_candidates: u64,
     pub execution_related_candidates: u64,
+    pub deep_analysis_candidates: u64,
     pub slices_total: u64,
     pub slices_over_token_limit: u64,
 }
