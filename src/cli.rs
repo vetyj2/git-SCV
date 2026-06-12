@@ -164,6 +164,12 @@ pub fn validate_snapshot(args: &SnapshotArgs) -> Result<(), ScvError> {
             args.url
         ));
     }
+    if !is_supported_archive_url(&args.url) {
+        return usage(format!(
+            "오류: snapshot URL은 .zip, .tar.gz, .tgz 압축 주소여야 한다: {}",
+            args.url
+        ));
+    }
 
     usage(
         "오류: snapshot 명령은 아직 구현하지 않았다. 원격 스냅샷은 압축 내려받기와 체크섬 검증 구현 뒤에만 사용할 수 있다."
@@ -177,6 +183,16 @@ fn is_sha256_hex(value: &str) -> bool {
 
 fn is_https_snapshot_url(value: &str) -> bool {
     value.to_ascii_lowercase().starts_with("https://")
+}
+
+fn is_supported_archive_url(value: &str) -> bool {
+    let path = value
+        .split_once('#')
+        .map_or(value, |(before_fragment, _)| before_fragment)
+        .split_once('?')
+        .map_or(value, |(before_query, _)| before_query)
+        .to_ascii_lowercase();
+    path.ends_with(".zip") || path.ends_with(".tar.gz") || path.ends_with(".tgz")
 }
 
 fn usage<T>(message: String) -> Result<T, ScvError> {
