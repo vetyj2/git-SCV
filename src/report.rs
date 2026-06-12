@@ -1,7 +1,9 @@
 //! 사람용 리포트.
 //! 마지막 무실행 문장은 model::NO_EXEC_SENTENCE 상수를 쓴다.
 
-use crate::model::{GitInfo, Priority, RunData, SensitiveReviewMode, NO_EXEC_SENTENCE};
+use crate::model::{
+    GitInfo, Priority, ReviewAction, RunData, SensitiveReviewMode, NO_EXEC_SENTENCE,
+};
 
 pub fn render(data: &RunData) -> String {
     let findings = if data.findings.findings.is_empty() {
@@ -27,6 +29,7 @@ pub fn render(data: &RunData) -> String {
         .iter()
         .map(|item| format!("- {item}\n"))
         .collect::<String>();
+    let required_action_list = required_actions_summary(&data.review.required_actions);
 
     format!(
         "# git-scv 검사 리포트\n\n\
@@ -60,7 +63,8 @@ pub fn render(data: &RunData) -> String {
 - 기본 모델 입력 정책: 민감 후보와 실행 후보 제외\n\n\
 ## 기계 요약\n\n\
 - 검토 판정: {review_verdict}\n\
-- 필요한 후속 액션: {required_actions}개\n\n\
+- 필요한 후속 액션: {required_actions}개\n\
+- 필요한 후속 액션 목록: {required_action_list}\n\n\
 ## 의존성 요약\n\n\
 - 매니페스트: {dependency_manifest_count}개\n\
 - 직접 의존성 이름: {dependency_count}개\n\
@@ -109,6 +113,7 @@ pub fn render(data: &RunData) -> String {
             .iter()
             .filter(|action| action.required)
             .count(),
+        required_action_list = required_action_list,
         dependency_manifest_count = data.dependencies.manifests.len(),
         dependency_count = data
             .dependencies
@@ -119,6 +124,27 @@ pub fn render(data: &RunData) -> String {
         findings = findings,
         limitations = limitations,
     )
+}
+
+fn required_actions_summary(actions: &[ReviewAction]) -> String {
+    let items = actions
+        .iter()
+        .filter(|action| action.required)
+        .map(|action| {
+            let ack = if action.acknowledgements.is_empty() {
+                String::new()
+            } else {
+                format!(", ack {}", action.acknowledgements.join(", "))
+            };
+            format!("{}({}개 경로{})", action.id, action.paths.len(), ack)
+        })
+        .collect::<Vec<_>>();
+
+    if items.is_empty() {
+        "필수 액션 없음".into()
+    } else {
+        items.join("; ")
+    }
 }
 
 fn git_summary(git: Option<&GitInfo>) -> String {
@@ -165,5 +191,55 @@ fn yes_no(value: bool) -> &'static str {
         "예"
     } else {
         "아니오"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn required_actions_summary_lists_required_actions_and_acknowledgements() {
+        let actions = vec![
+            action(
+                "sensitive-raw-review",
+                true,
+                vec![".env"],
+                vec![
+                    "review-sensitive-candidates",
+                    "include-approved-sensitive-raw-in-diagnostic-input",
+                ],
+            ),
+            action("execution-review", true, vec!["setup.sh"], vec![]),
+            action("oversized-slice-review", true, vec![], vec![]),
+        ];
+
+        let summary = required_actions_summary(&actions);
+
+        assert!(summary.contains("sensitive-raw-review(1개 경로, ack review-sensitive-candidates, include-approved-sensitive-raw-in-diagnostic-input)"));
+        assert!(summary.contains("execution-review(1개 경로)"));
+        assert!(summary.contains("oversized-slice-review(0개 경로)"));
+    }
+
+    #[test]
+    fn required_actions_summary_reports_no_required_actions() {
+        let actions = vec![action("execution-review", false, vec!["setup.sh"], vec![])];
+
+        assert_eq!(required_actions_summary(&actions), "필수 액션 없음");
+    }
+
+    fn action(
+        id: &str,
+        required: bool,
+        paths: Vec<&str>,
+        acknowledgements: Vec<&str>,
+    ) -> ReviewAction {
+        ReviewAction {
+            id: id.into(),
+            required,
+            reason: "시험".into(),
+            paths: paths.into_iter().map(str::to_string).collect(),
+            acknowledgements: acknowledgements.into_iter().map(str::to_string).collect(),
+        }
     }
 }

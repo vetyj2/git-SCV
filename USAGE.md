@@ -59,7 +59,7 @@ SHA-256 digest, archive format, and extracted source path.
 
 1. Run `git-scv inspect <repo-path> --out <run-dir>`.
 2. Open `<run-dir>/report.md` and read the summary first, including sensitive
-   review ack status.
+   review ack status and the required action list.
 3. Open `coverage.json` to understand what was listed, read, skipped, or left
    unknown.
 4. Open `findings.json` and follow each evidence ID into `evidence.json`.
@@ -129,9 +129,25 @@ Use them in this order:
 12. `review.json`: machine-readable verdict, totals including deep-analysis
    candidate count, required actions, and structured approval acknowledgements.
 13. `report.md`: human-readable Markdown summary, including sensitive review
-   ack status.
+   ack status and the required action list.
 14. `report.html`: browser-friendly human-readable summary, including
    sensitive review ack status and required ack strings.
+
+## Required Actions
+
+`review.json.required_actions` is the machine-readable checklist to review
+before handing files to a model or approving any install, build, test, script,
+hook, binary, or container command.
+
+- `sensitive-raw-review`: sensitive-candidate contents remain excluded unless
+  the user gives both approval flags, both exact ack strings, and explicit
+  repo-relative paths.
+- `execution-review`: automatic-execution and execution-related paths require
+  human approval before model input or any command execution request.
+- `oversized-slice-review`: one or more path-only reading slices exceeds the
+  token planning budget. This is a model-input planning warning, not a safety
+  verdict. Split, summarize, or inspect those paths separately before sending
+  them to a model.
 
 ## Sensitive Candidates
 
