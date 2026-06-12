@@ -39,7 +39,8 @@ those URLs to artifacts.
 ## Recommended Review Flow
 
 1. Run `git-scv inspect <repo-path> --out <run-dir>`.
-2. Open `<run-dir>/report.md` and read the summary first.
+2. Open `<run-dir>/report.md` and read the summary first, including sensitive
+   review ack status.
 3. Open `coverage.json` to understand what was listed, read, skipped, or left
    unknown.
 4. Open `findings.json` and follow each evidence ID into `evidence.json`.
@@ -101,7 +102,8 @@ Use them in this order:
    `gates.json`; sensitive and execution candidates are excluded from default
    model input until separately approved.
 11. `review.json`: machine-readable verdict, totals, and required actions.
-12. `report.md`: human-readable Markdown summary.
+12. `report.md`: human-readable Markdown summary, including sensitive review
+   ack status.
 13. `report.html`: browser-friendly human-readable summary.
 
 ## Sensitive Candidates

@@ -80,7 +80,8 @@ Use Git-SCV before installing, building, testing, or running an unfamiliar
 repository.
 
 1. Run `git-scv inspect <repo-path> --out <run-dir>`.
-2. Read `report.md` first for the human summary.
+2. Read `report.md` first for the human summary, including sensitive review ack
+   status.
 3. Check `coverage.json` to see what was inspected, skipped, or left unknown.
 4. For each finding, follow the evidence IDs from `findings.json` to
    `evidence.json`.

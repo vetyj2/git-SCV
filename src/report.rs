@@ -45,6 +45,7 @@ pub fn render(data: &RunData) -> String {
 ## 민감 후보 처리\n\n\
 - 모드: {sensitive_mode}\n\
 - 후보: {sensitive_candidates}개 / 원문 승인 경로: {approved_paths}개\n\
+- 승인 ack 확인: 1차 {review_ack} / 2차 {raw_ack}\n\
 - 원문 저장: 없음\n\
 - 메모: {sensitive_note}\n\n\
 ## 승인 게이트\n\n\
@@ -84,6 +85,8 @@ pub fn render(data: &RunData) -> String {
         sensitive_mode = sensitive_mode_label(data.sensitive.mode),
         sensitive_candidates = data.sensitive.candidates.len(),
         approved_paths = data.sensitive.approved_paths.len(),
+        review_ack = yes_no(data.sensitive.review_ack_confirmed),
+        raw_ack = yes_no(data.sensitive.raw_ack_confirmed),
         sensitive_note = data.sensitive.note.as_str(),
         sensitive_gate = yes_no(data.gates.sensitive_raw_review.approval_required),
         execution_gate = yes_no(data.gates.execution_review.approval_required),
