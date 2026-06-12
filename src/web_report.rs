@@ -144,6 +144,7 @@ pub fn render(data: &RunData) -> String {
         <div class="item"><div class="label">발견사항</div><div class="value">{findings_total}</div></div>
         <div class="item"><div class="label">민감 후보</div><div class="value">{sensitive_count}</div></div>
         <div class="item"><div class="label">슬라이스</div><div class="value">{slice_count}</div></div>
+        <div class="item"><div class="label">의존성 이름</div><div class="value">{dependency_count}</div></div>
       </div>
     </section>
     <section>
@@ -170,6 +171,12 @@ pub fn render(data: &RunData) -> String {
         findings_total = data.review.counts.findings_total,
         sensitive_count = data.review.counts.sensitive_candidates,
         slice_count = data.review.counts.slices_total,
+        dependency_count = data
+            .dependencies
+            .manifests
+            .iter()
+            .map(|manifest| manifest.dependencies.len())
+            .sum::<usize>(),
         required_actions = required_actions,
         findings = findings,
         no_exec = escape(NO_EXEC_SENTENCE),

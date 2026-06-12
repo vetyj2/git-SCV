@@ -6,7 +6,8 @@
 
 use crate::errors::ScvError;
 use crate::model::{
-    DetectOutcome, Detection, Entry, EntryKind, InventoryArtifact, ReadFile, RuleId,
+    DependencyItem, DependencyManifest, DetectOutcome, Detection, Entry, EntryKind,
+    InventoryArtifact, ReadFile, RuleId,
 };
 use std::path::Path;
 
@@ -16,6 +17,7 @@ pub fn detect(inventory: &InventoryArtifact, root: &Path) -> Result<DetectOutcom
     let mut detections = Vec::new();
     let mut read_files = Vec::new();
     let mut binary_skips = 0;
+    let mut dependency_manifests = Vec::new();
     let mut limitations = Vec::new();
 
     for entry in &inventory.entries {
@@ -28,6 +30,7 @@ pub fn detect(inventory: &InventoryArtifact, root: &Path) -> Result<DetectOutcom
                 &mut detections,
                 &mut read_files,
                 &mut binary_skips,
+                &mut dependency_manifests,
                 &mut limitations,
             )?;
         }
@@ -44,6 +47,7 @@ pub fn detect(inventory: &InventoryArtifact, root: &Path) -> Result<DetectOutcom
         detections,
         read_files,
         binary_skips,
+        dependency_manifests,
         limitations,
     })
 }
@@ -92,6 +96,7 @@ fn read_package_json(
     detections: &mut Vec<Detection>,
     read_files: &mut Vec<ReadFile>,
     binary_skips: &mut u64,
+    dependency_manifests: &mut Vec<DependencyManifest>,
     limitations: &mut Vec<String>,
 ) -> Result<(), ScvError> {
     let path = root.join(&entry.path);
@@ -120,6 +125,8 @@ fn read_package_json(
         }
     };
 
+    dependency_manifests.push(dependency_manifest(&entry.path, &parsed));
+
     let Some(scripts) = parsed.get("scripts").and_then(|value| value.as_object()) else {
         return Ok(());
     };
@@ -139,6 +146,62 @@ fn read_package_json(
     }
 
     Ok(())
+}
+
+fn dependency_manifest(path: &str, parsed: &serde_json::Value) -> DependencyManifest {
+    let mut dependencies = Vec::new();
+    for scope in [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+        "bundledDependencies",
+        "bundleDependencies",
+    ] {
+        if let Some(map) = parsed.get(scope).and_then(|value| value.as_object()) {
+            for (name, spec) in map {
+                dependencies.push(DependencyItem {
+                    name: name.clone(),
+                    scope: scope.into(),
+                    source_kind: dependency_source_kind(spec),
+                });
+            }
+        }
+    }
+    dependencies.sort_by(|left, right| {
+        left.scope
+            .cmp(&right.scope)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    DependencyManifest {
+        path: path.into(),
+        ecosystem: "npm".into(),
+        dependencies,
+    }
+}
+
+fn dependency_source_kind(spec: &serde_json::Value) -> String {
+    let Some(value) = spec.as_str() else {
+        return "non-string".into();
+    };
+    let lower = value.to_lowercase();
+    if lower.starts_with("workspace:") {
+        "workspace".into()
+    } else if lower.starts_with("file:") || lower.starts_with("link:") {
+        "local-path".into()
+    } else if lower.starts_with("git:")
+        || lower.starts_with("git+")
+        || lower.contains("github:")
+        || lower.contains("gitlab:")
+    {
+        "git".into()
+    } else if lower.starts_with("http://") || lower.starts_with("https://") {
+        "url".into()
+    } else if lower.starts_with("npm:") {
+        "alias".into()
+    } else {
+        "registry".into()
+    }
 }
 
 fn add(detections: &mut Vec<Detection>, rule: RuleId, entry: &Entry) {

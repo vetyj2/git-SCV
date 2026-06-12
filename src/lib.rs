@@ -4,6 +4,7 @@
 
 pub mod artifacts;
 pub mod cli;
+pub mod dependencies;
 pub mod detect;
 pub mod errors;
 pub mod evidence;

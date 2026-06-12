@@ -182,13 +182,14 @@ pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
     }
 }
 
-const ARTIFACTS: [&str; 13] = [
+const ARTIFACTS: [&str; 14] = [
     "run.json",
     "source.json",
     "inventory.json",
     "coverage.json",
     "evidence.json",
     "findings.json",
+    "dependencies.json",
     "gates.json",
     "review.json",
     "sensitive.json",

@@ -119,6 +119,7 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
         findings: findings_vec,
         limitations,
     };
+    let dependencies = crate::dependencies::build(&detect_outcome, &run_id);
     let sectors = crate::sectors::build(&inventory, &detect_outcome.detections, &run_id);
     let sensitive =
         match crate::sensitive::build(&inventory, &detect_outcome.detections, root, &args, &run_id)
@@ -154,6 +155,7 @@ pub fn run(args: InspectArgs) -> Result<(), ScvError> {
         coverage,
         evidence,
         findings,
+        dependencies,
         sectors,
         sensitive,
         gates,

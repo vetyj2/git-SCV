@@ -339,6 +339,31 @@ pub struct FindingsArtifact {
     pub limitations: Vec<String>,
 }
 
+// -------------------------------------------------------- dependencies.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct DependencyItem {
+    pub name: String,
+    pub scope: String,
+    pub source_kind: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct DependencyManifest {
+    pub path: String,
+    pub ecosystem: String,
+    pub dependencies: Vec<DependencyItem>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct DependencyArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub manifests: Vec<DependencyManifest>,
+    pub limitations: Vec<String>,
+    pub note: String,
+}
+
 // ------------------------------------------------------------ sectors.json
 
 #[derive(Serialize, Clone, Debug)]
@@ -545,6 +570,7 @@ pub struct DetectOutcome {
     pub detections: Vec<Detection>,
     pub read_files: Vec<ReadFile>,
     pub binary_skips: u64,
+    pub dependency_manifests: Vec<DependencyManifest>,
     /// 예: package.json 파싱 실패 문장 (사양 0500 2절).
     pub limitations: Vec<String>,
 }
@@ -562,6 +588,7 @@ pub struct RunData {
     pub coverage: CoverageArtifact,
     pub evidence: EvidenceArtifact,
     pub findings: FindingsArtifact,
+    pub dependencies: DependencyArtifact,
     pub sectors: SectorsArtifact,
     pub sensitive: SensitiveArtifact,
     pub gates: GateArtifact,

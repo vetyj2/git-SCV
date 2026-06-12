@@ -52,6 +52,7 @@ inventory.json
 coverage.json
 evidence.json
 findings.json
+dependencies.json
 sectors.json
 sensitive.json
 gates.json
@@ -71,16 +72,18 @@ repository.
 3. Check `coverage.json` to see what was inspected, skipped, or left unknown.
 4. For each finding, follow the evidence IDs from `findings.json` to
    `evidence.json`.
-5. Check `sensitive.json` before raw sensitive-candidate review.
-6. Check `gates.json` before model input, install, build, test, or run
+5. Check `dependencies.json` for direct dependency names and source kinds. Raw
+   version ranges, URLs, git addresses, and local paths are not stored.
+6. Check `sensitive.json` before raw sensitive-candidate review.
+7. Check `gates.json` before model input, install, build, test, or run
    approval.
-7. Use `slices.json` as a path-only reading plan for later model input.
-8. Use `review.json` for machine-readable totals, verdict, and required
+8. Use `slices.json` as a path-only reading plan for later model input.
+9. Use `review.json` for machine-readable totals, verdict, and required
    actions.
-9. Open `report.html` when a browser-friendly run report is useful.
-10. Treat `secret-candidate` findings as unresolved review items, not as safe or
+10. Open `report.html` when a browser-friendly run report is useful.
+11. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-11. Ask for explicit approval before running install, build, test, script, hook,
+12. Ask for explicit approval before running install, build, test, script, hook,
    binary, or container commands from the inspected repository.
 
 ## Sensitive Candidates

@@ -59,6 +59,10 @@ pub fn render(data: &RunData) -> String {
 ## 기계 요약\n\n\
 - 검토 판정: {review_verdict}\n\
 - 필요한 후속 액션: {required_actions}개\n\n\
+## 의존성 요약\n\n\
+- 매니페스트: {dependency_manifest_count}개\n\
+- 직접 의존성 이름: {dependency_count}개\n\
+- 메모: 버전·URL 원문 미저장\n\n\
 ## 발견사항\n\n\
 {findings}\n\
 ## 한계\n\n\
@@ -100,6 +104,13 @@ pub fn render(data: &RunData) -> String {
             .iter()
             .filter(|action| action.required)
             .count(),
+        dependency_manifest_count = data.dependencies.manifests.len(),
+        dependency_count = data
+            .dependencies
+            .manifests
+            .iter()
+            .map(|manifest| manifest.dependencies.len())
+            .sum::<usize>(),
         findings = findings,
         limitations = limitations,
     )

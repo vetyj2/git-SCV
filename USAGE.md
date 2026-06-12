@@ -32,13 +32,16 @@ repository.
 4. Open `findings.json` and follow each evidence ID into `evidence.json`.
 5. Open `sensitive.json` and confirm whether sensitive candidates were excluded,
    summarized, or path-approved for raw review.
-6. Open `gates.json` before model input or any install, build, test, script,
+6. Open `dependencies.json` to review direct dependency names and source kinds.
+   Git-SCV does not store raw version ranges, URLs, git addresses, or local
+   paths there.
+7. Open `gates.json` before model input or any install, build, test, script,
    hook, binary, or container approval request.
-7. Use `slices.json` as the path-only reading plan for later model input.
-8. Use `review.json` for machine-readable totals, verdict, and required
+8. Use `slices.json` as the path-only reading plan for later model input.
+9. Use `review.json` for machine-readable totals, verdict, and required
    actions.
-9. Treat `secret-candidate` findings as unresolved review items.
-10. Ask for explicit approval before running any install, build, test, script,
+10. Treat `secret-candidate` findings as unresolved review items.
+11. Ask for explicit approval before running any install, build, test, script,
    hook, binary, or container command from the inspected repository.
 
 ## Artifact Files
@@ -52,6 +55,7 @@ inventory.json
 coverage.json
 evidence.json
 findings.json
+dependencies.json
 sectors.json
 sensitive.json
 gates.json
@@ -68,15 +72,17 @@ Use them in this order:
 3. `coverage.json`: what Git-SCV read and what it skipped.
 4. `findings.json`: review items and limitations.
 5. `evidence.json`: evidence records referenced by findings.
-6. `sectors.json`: suggested reading plan for deeper manual review.
-7. `sensitive.json`: sensitive-candidate mode, approvals, candidates, and
+6. `dependencies.json`: direct dependency names and source kinds from readable
+   manifests; raw specs are not stored.
+7. `sectors.json`: suggested reading plan for deeper manual review.
+8. `sensitive.json`: sensitive-candidate mode, approvals, candidates, and
    redacted review signals.
-8. `gates.json`: sensitive raw-review and execution approval candidate lists.
-9. `slices.json`: path-only reading slices derived from `sectors.json` and
+9. `gates.json`: sensitive raw-review and execution approval candidate lists.
+10. `slices.json`: path-only reading slices derived from `sectors.json` and
    `gates.json`.
-10. `review.json`: machine-readable verdict, totals, and required actions.
-11. `report.md`: human-readable Markdown summary.
-12. `report.html`: browser-friendly human-readable summary.
+11. `review.json`: machine-readable verdict, totals, and required actions.
+12. `report.md`: human-readable Markdown summary.
+13. `report.html`: browser-friendly human-readable summary.
 
 ## Sensitive Candidates
 
