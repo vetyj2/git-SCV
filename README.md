@@ -17,10 +17,16 @@ Install Rust first:
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-Then install Git-SCV from a local checkout:
+Install Git-SCV from GitHub:
 
 ```sh
-cargo install --path .
+cargo install --git https://github.com/vetyj2/git-SCV --locked
+```
+
+Or install it from a local checkout:
+
+```sh
+cargo install --path . --locked
 ```
 
 ## Build
@@ -91,10 +97,10 @@ repository.
 1. Use `inspect` when the repository is already on disk.
 2. Use `snapshot` only when you have an HTTPS archive URL and a SHA-256 digest
    verified through a separate channel.
-3. Read `report.md` or `report.html` first, then check `coverage.json`,
-   `findings.json`, `evidence.json`, `dependencies.json`, `sensitive.json`,
-   `gates.json`, `slices.json`, and `review.json` before approving any next
-   action.
+3. Read `report.md` or `report.html` first, then check `source.json`,
+   `inventory.json`, `coverage.json`, `findings.json`, `evidence.json`,
+   `dependencies.json`, `sensitive.json`, `gates.json`, `slices.json`, and
+   `review.json` before approving any next action.
 4. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
 5. Ask for explicit approval before running install, build, test, script, hook,
@@ -127,8 +133,9 @@ Optional sensitive-candidate review modes are explicit:
 
 ## Status
 
-MVP inspector implemented. The CLI can inspect a local repository path and write
-the artifact set above without executing commands from the inspected repository.
+v0.2.1 prepares no-exec local and verified HTTPS snapshot inspection, sensitive
+candidate review gates, path-only model input slices, human and HTML reports,
+and Cargo package/install checks.
 
 ## License
 

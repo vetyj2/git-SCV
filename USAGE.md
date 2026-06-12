@@ -107,28 +107,30 @@ Use them in this order:
 1. `run.json`: status, exit code, tool version, and stage outcomes.
 2. `source.json`: inspected path and local git metadata, if present. Remote URL
    user information is redacted.
-3. `coverage.json`: what Git-SCV read and what it skipped.
-4. `findings.json`: review items and limitations.
-5. `evidence.json`: evidence records referenced by findings.
-6. `dependencies.json`: direct dependency names and source kinds from readable
+3. `inventory.json`: listed files, skipped paths, symlink records, and path
+   metadata.
+4. `coverage.json`: what Git-SCV read and what it skipped.
+5. `findings.json`: review items and limitations.
+6. `evidence.json`: evidence records referenced by findings.
+7. `dependencies.json`: direct dependency names and source kinds from readable
    manifests; raw specs are not stored.
-7. `sectors.json`: suggested reading plan for deeper manual review. Manifest,
+8. `sectors.json`: suggested reading plan for deeper manual review. Manifest,
    automatic-execution, entrypoint, and language deep-analysis candidates are
    ordered before the remaining size-sorted files.
-8. `sensitive.json`: sensitive-candidate mode, approvals, ack confirmations,
+9. `sensitive.json`: sensitive-candidate mode, approvals, ack confirmations,
    candidates, and redacted review signals.
-9. `gates.json`: sensitive raw-review and execution approval candidate lists,
+10. `gates.json`: sensitive raw-review and execution approval candidate lists,
    including execution approval before model input and structured sensitive
    review ack strings.
-10. `slices.json`: path-only reading slices derived from `sectors.json` and
+11. `slices.json`: path-only reading slices derived from `sectors.json` and
    `gates.json`; each file may include a path or extension based language hint
    and deep-analysis candidate flag. Sensitive and execution candidates are
    excluded from default model input until separately approved.
-11. `review.json`: machine-readable verdict, totals including deep-analysis
+12. `review.json`: machine-readable verdict, totals including deep-analysis
    candidate count, required actions, and structured approval acknowledgements.
-12. `report.md`: human-readable Markdown summary, including sensitive review
+13. `report.md`: human-readable Markdown summary, including sensitive review
    ack status.
-13. `report.html`: browser-friendly human-readable summary, including
+14. `report.html`: browser-friendly human-readable summary, including
    sensitive review ack status and required ack strings.
 
 ## Sensitive Candidates

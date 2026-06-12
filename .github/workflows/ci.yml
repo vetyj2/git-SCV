@@ -18,3 +18,5 @@ jobs:
         run: cargo clippy --lib --bins -- -D warnings
       - name: 시험
         run: cargo test
+      - name: 패키징 경계
+        run: cargo package --locked
