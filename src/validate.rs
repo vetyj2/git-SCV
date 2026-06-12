@@ -152,6 +152,22 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         ));
     }
 
+    let mut unknown_dependency_manifests = data
+        .dependencies
+        .manifests
+        .iter()
+        .filter(|manifest| !inventory_files.contains(manifest.path.as_str()))
+        .map(|manifest| manifest.path.as_str())
+        .collect::<Vec<_>>();
+    if !unknown_dependency_manifests.is_empty() {
+        unknown_dependency_manifests.sort();
+        unknown_dependency_manifests.dedup();
+        errors.push(format!(
+            "V12: 인벤토리에 없는 의존성 매니페스트 경로: {}",
+            unknown_dependency_manifests.join(", ")
+        ));
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
