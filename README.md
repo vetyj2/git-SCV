@@ -45,6 +45,9 @@ The output directory must be new or empty. Git-SCV does not execute install,
 build, test, script, hook, binary, or container commands from the inspected
 repository.
 
+When Git-SCV records git remote URLs in `source.json`, URL user information is
+redacted so access tokens are not copied into artifacts.
+
 The run directory contains machine-readable artifacts and a human-readable
 report:
 

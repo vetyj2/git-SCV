@@ -27,6 +27,10 @@ The output directory must be new or empty. Git-SCV refuses to write into a
 non-empty output directory and refuses output paths inside the inspected
 repository.
 
+`source.json` may include git remote URLs from the local repository. Git-SCV
+redacts URL user information, including token-like userinfo, before writing
+those URLs to artifacts.
+
 ## Recommended Review Flow
 
 1. Run `git-scv inspect <repo-path> --out <run-dir>`.
@@ -72,7 +76,8 @@ report.html
 Use them in this order:
 
 1. `run.json`: status, exit code, tool version, and stage outcomes.
-2. `source.json`: inspected path and local git metadata, if present.
+2. `source.json`: inspected path and local git metadata, if present. Remote URL
+   user information is redacted.
 3. `coverage.json`: what Git-SCV read and what it skipped.
 4. `findings.json`: review items and limitations.
 5. `evidence.json`: evidence records referenced by findings.

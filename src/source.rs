@@ -91,7 +91,7 @@ fn identify_git(root: &Path) -> (Option<GitInfo>, bool) {
 
 fn redact_remote_url(url: &str) -> String {
     let Some(scheme_end) = url.find("://") else {
-        return url.into();
+        return redact_scp_like_remote_url(url).unwrap_or_else(|| url.into());
     };
     let authority_start = scheme_end + 3;
     let path_start = url[authority_start..]
@@ -103,4 +103,49 @@ fn redact_remote_url(url: &str) -> String {
     };
     let at = authority_start + at_offset;
     format!("{}***@{}", &url[..authority_start], &url[at + 1..])
+}
+
+fn redact_scp_like_remote_url(url: &str) -> Option<String> {
+    let (user, rest) = url.split_once('@')?;
+    let (host, path) = rest.split_once(':')?;
+    if user.is_empty() || host.is_empty() || path.is_empty() {
+        return None;
+    }
+    if user.contains('/') || host.contains('/') {
+        return None;
+    }
+    Some(format!("***@{host}:{path}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_remote_url;
+
+    #[test]
+    fn remote_url_userinfo_is_redacted() {
+        for (input, expected) in [
+            (
+                "https://token@example.com/org/repo.git",
+                "https://***@example.com/org/repo.git",
+            ),
+            (
+                "https://user:token@example.com/org/repo.git",
+                "https://***@example.com/org/repo.git",
+            ),
+            (
+                "ssh://git@example.com/org/repo.git",
+                "ssh://***@example.com/org/repo.git",
+            ),
+            (
+                "git@example.com:org/repo.git",
+                "***@example.com:org/repo.git",
+            ),
+            (
+                "https://example.com/org/repo.git",
+                "https://example.com/org/repo.git",
+            ),
+        ] {
+            assert_eq!(redact_remote_url(input), expected);
+        }
+    }
 }
