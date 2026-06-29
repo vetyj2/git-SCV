@@ -1,9 +1,10 @@
 //! 증거 기록.
 //!
-//! id 는 E0001 부터 추가 순서대로, 재사용·결번 금지(0601).
-//! excerpt 는 최대 200자(문자 기준), kind=SecretName 이면 항상 None(0604).
+//! id 는 E0001 부터 추가 순서대로, 재사용·결번 금지(0601). artifact에는
+//! raw excerpt를 저장하지 않고 redacted excerpt와 label만 남긴다.
 
 use crate::model::{Evidence, EvidenceArtifact, EvidenceKind, LineRange};
+use crate::redaction::{redact_command_excerpt, SecretLikeLabel};
 
 pub struct EvidenceStore {
     items: Vec<Evidence>,
@@ -27,6 +28,8 @@ impl EvidenceStore {
         kind: EvidenceKind,
         lines: Option<LineRange>,
         summary: &str,
+        json_pointer: Option<String>,
+        signal_labels: Vec<String>,
         excerpt: Option<&str>,
     ) -> String {
         let id = format!("E{:04}", self.items.len() + 1);
@@ -35,19 +38,70 @@ impl EvidenceStore {
         } else {
             None
         };
-        let normalized_excerpt = if kind == EvidenceKind::SecretName {
-            None
+        let (redacted_excerpt, redaction_applied, redaction_labels, signal_labels) =
+            if kind == EvidenceKind::ContentLine {
+                let redacted = excerpt.map(redact_command_excerpt);
+                let redaction_labels = redacted
+                    .as_ref()
+                    .map(|value| {
+                        value
+                            .labels()
+                            .iter()
+                            .map(|label| label.as_str().into())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut signal_labels = signal_labels;
+                if redacted
+                    .as_ref()
+                    .is_some_and(|value| value.labels().contains(&SecretLikeLabel::NetworkCommand))
+                    && !signal_labels.iter().any(|label| label == "network-command")
+                {
+                    signal_labels.push("network-command".into());
+                }
+                if redacted.as_ref().is_some_and(|value| {
+                    value
+                        .labels()
+                        .contains(&SecretLikeLabel::ShellExecutionToken)
+                }) && !signal_labels
+                    .iter()
+                    .any(|label| label == "shell-execution-token")
+                {
+                    signal_labels.push("shell-execution-token".into());
+                }
+                signal_labels.sort();
+                signal_labels.dedup();
+                (
+                    Some(redacted_command_placeholder(json_pointer.as_deref())),
+                    redacted
+                        .as_ref()
+                        .is_some_and(|value| !value.labels().is_empty()),
+                    redaction_labels,
+                    signal_labels,
+                )
+            } else {
+                (None, false, Vec::new(), signal_labels)
+            };
+
+        let json_pointer = if kind == EvidenceKind::ContentLine {
+            json_pointer
         } else {
-            excerpt.map(|value| value.chars().take(200).collect())
+            None
         };
 
         self.items.push(Evidence {
             id: id.clone(),
             path: path.into(),
             kind,
+            json_pointer,
             lines: normalized_lines,
             summary: summary.into(),
-            excerpt: normalized_excerpt,
+            value_stored: false,
+            redacted_excerpt,
+            signal_labels,
+            raw_excerpt_stored: false,
+            redaction_applied,
+            redaction_labels,
         });
 
         id
@@ -68,4 +122,12 @@ impl EvidenceStore {
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
+}
+
+fn redacted_command_placeholder(json_pointer: Option<&str>) -> String {
+    let Some(pointer) = json_pointer else {
+        return "<redacted-command>".into();
+    };
+    let key = pointer.rsplit('/').next().unwrap_or("command");
+    format!("{key}: <redacted-command>")
 }

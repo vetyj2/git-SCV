@@ -88,7 +88,7 @@ enum GroupPolicy {
     Each,
 }
 
-fn ordered_rules() -> [RuleId; 13] {
+fn ordered_rules() -> [RuleId; 14] {
     [
         RuleId::D01,
         RuleId::D02,
@@ -103,6 +103,7 @@ fn ordered_rules() -> [RuleId; 13] {
         RuleId::D11,
         RuleId::D12,
         RuleId::D13,
+        RuleId::D14,
     ]
 }
 
@@ -117,7 +118,8 @@ fn group_policy(rule: RuleId) -> GroupPolicy {
         | RuleId::D06
         | RuleId::D07
         | RuleId::D08
-        | RuleId::D09 => GroupPolicy::Rule,
+        | RuleId::D09
+        | RuleId::D14 => GroupPolicy::Rule,
     }
 }
 
@@ -133,8 +135,34 @@ fn add_evidence(store: &mut EvidenceStore, detection: &Detection) -> String {
         kind,
         lines,
         &summary,
+        json_pointer(detection),
+        signal_labels(detection),
         detection.excerpt.as_deref(),
     )
+}
+
+fn json_pointer(detection: &Detection) -> Option<String> {
+    if detection.rule == RuleId::D02 {
+        return detection
+            .key
+            .as_deref()
+            .map(|key| format!("/scripts/{}", escape_json_pointer(key)));
+    }
+    None
+}
+
+fn signal_labels(detection: &Detection) -> Vec<String> {
+    match detection.rule {
+        RuleId::D02 => vec![
+            "lifecycle-script".into(),
+            "execution-related-candidate".into(),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+fn escape_json_pointer(value: &str) -> String {
+    value.replace('~', "~0").replace('/', "~1")
 }
 
 fn evidence_kind(rule: RuleId) -> EvidenceKind {
@@ -151,7 +179,8 @@ fn evidence_kind(rule: RuleId) -> EvidenceKind {
         | RuleId::D09
         | RuleId::D10
         | RuleId::D11
-        | RuleId::D12 => EvidenceKind::FilePresence,
+        | RuleId::D12
+        | RuleId::D14 => EvidenceKind::FilePresence,
     }
 }
 
@@ -173,6 +202,7 @@ fn evidence_summary(detection: &Detection) -> String {
         RuleId::D11 => "편집기 자동 태스크 정의 파일이 존재함".into(),
         RuleId::D12 => "깃 훅 배포 디렉터리가 존재함".into(),
         RuleId::D13 => "비밀값으로 보이는 이름의 파일이 존재함 (내용 미열람)".into(),
+        RuleId::D14 => "추가 생태계 매니페스트 또는 도구 설정 파일이 존재함".into(),
     }
 }
 
@@ -310,6 +340,15 @@ fn finding_text(rule: RuleId, detections: &[&Detection]) -> FindingText {
             ),
             limitation: "내용 미열람 항목이므로 설치, 실행, 모델 입력 전 별도 확인이 필요하다.".into(),
         },
+        RuleId::D14 => FindingText {
+            summary: format!("추가 생태계 매니페스트 또는 도구 설정 파일 {count}개가 있다."),
+            detail: format!(
+                "Python, Go, Ruby, pre-commit 또는 유사 도구 표면이 감지됐다. 경로: {path_list}."
+            ),
+            limitation:
+                "현재는 이름 기반 감지이며 각 생태계 매니페스트 본문을 완전 파싱하지 않는다."
+                    .into(),
+        },
     }
 }
 
@@ -324,7 +363,7 @@ fn format_paths(paths: &[&str]) -> String {
 
 fn category(rule: RuleId) -> Category {
     match rule {
-        RuleId::D01 | RuleId::D03 | RuleId::D04 => Category::Manifest,
+        RuleId::D01 | RuleId::D03 | RuleId::D04 | RuleId::D14 => Category::Manifest,
         RuleId::D02 | RuleId::D05 | RuleId::D10 | RuleId::D11 | RuleId::D12 => {
             Category::AutoExecHook
         }
@@ -338,7 +377,7 @@ fn category(rule: RuleId) -> Category {
 
 fn priority(rule: RuleId) -> Priority {
     match rule {
-        RuleId::D01 | RuleId::D03 | RuleId::D04 => Priority::Info,
+        RuleId::D01 | RuleId::D03 | RuleId::D04 | RuleId::D14 => Priority::Info,
         RuleId::D06 | RuleId::D07 | RuleId::D08 => Priority::Low,
         RuleId::D02 | RuleId::D05 | RuleId::D09 | RuleId::D11 | RuleId::D12 | RuleId::D13 => {
             Priority::Medium

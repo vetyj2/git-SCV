@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV sectors", "type": "object", "required": ["schema_version", "run_id", "sectors", "suggested_read_order"], "properties": { "schema_version": { "type": "string" }, "run_id": { "type": "string" }, "sectors": { "type": "array" }, "suggested_read_order": { "type": "array" } } }

@@ -1,0 +1,104 @@
+{
+  "artifact_kind": "script_inventory",
+  "schema_version": "1",
+  "discovery_rule": "Every regular file directly under scripts/ must be listed here and split into one or more modules.",
+  "scripts": [
+    {
+      "path": "scripts/git-scv-hermes.sh",
+      "executable": true,
+      "description": "Hermes-oriented shell wrapper for Git-SCV install, case creation, briefing, artifact path display, and cleanup.",
+      "modules": [
+        {
+          "module_id": "M01-BOOTSTRAP-DISPATCH",
+          "stage": "SV1",
+          "functions": [
+            "die",
+            "need_cmd",
+            "usage",
+            "commands",
+            "main"
+          ],
+          "commands": [
+            "commands",
+            "help"
+          ],
+          "responsibility": "Common error path, help text, user-intent command map, and top-level dispatch."
+        },
+        {
+          "module_id": "M02-CASE-PACKAGE",
+          "stage": "SV1",
+          "functions": [
+            "case_root",
+            "sanitize_label",
+            "new_case_dir",
+            "run_dir_for_case",
+            "print_case_info",
+            "show_cmd",
+            "list_cmd"
+          ],
+          "commands": [
+            "show",
+            "list"
+          ],
+          "responsibility": "Local case root creation, case directory naming, run artifact discovery, artifact path printing, and listing."
+        },
+        {
+          "module_id": "M03-INSTALL-UPDATE",
+          "stage": "SV2",
+          "functions": [
+            "install_cmd",
+            "update_latest_cmd",
+            "uninstall_cmd",
+            "version_cmd"
+          ],
+          "commands": [
+            "install",
+            "update-latest",
+            "uninstall",
+            "version"
+          ],
+          "responsibility": "Install, update, uninstall, and version commands for Git-SCV itself."
+        },
+        {
+          "module_id": "M04-INSPECT-SNAPSHOT",
+          "stage": "SV2",
+          "functions": [
+            "inspect_cmd",
+            "snapshot_cmd"
+          ],
+          "commands": [
+            "inspect",
+            "snapshot"
+          ],
+          "responsibility": "Create a case package, invoke git-scv inspect or snapshot, print artifact paths, and immediately print the mandatory brief."
+        },
+        {
+          "module_id": "M05-BRIEF-ARTIFACTS",
+          "stage": "SV3",
+          "functions": [
+            "brief_cmd",
+            "print_case_info",
+            "run_dir_for_case"
+          ],
+          "commands": [
+            "brief"
+          ],
+          "responsibility": "Resolve a case directory to run artifacts and expose the first-class brief and review artifacts."
+        },
+        {
+          "module_id": "M06-CLEANUP-SAFETY",
+          "stage": "SV4",
+          "functions": [
+            "cleanup_cmd",
+            "cleanup_all_cmd"
+          ],
+          "commands": [
+            "cleanup",
+            "cleanup-all"
+          ],
+          "responsibility": "Delete only harness-owned case packages with exact acknowledgement, root containment, and sentinel checks."
+        }
+      ]
+    }
+  ]
+}

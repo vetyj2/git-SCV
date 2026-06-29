@@ -3,6 +3,8 @@
 //! main.rs 는 이 라이브러리를 호출하는 얇은 진입점이다.
 
 pub mod artifacts;
+pub mod brief;
+pub mod case;
 pub mod cli;
 pub mod dependencies;
 pub mod detect;
@@ -10,9 +12,12 @@ pub mod errors;
 pub mod evidence;
 pub mod findings;
 pub mod gates;
+pub mod graph;
 pub mod inspect;
 pub mod language;
 pub mod model;
+pub mod receipt;
+pub mod redaction;
 pub mod report;
 pub mod review;
 pub mod safety;
@@ -21,6 +26,8 @@ pub mod sensitive;
 pub mod slices;
 pub mod snapshot;
 pub mod source;
+pub mod synthesis;
+pub mod unit_analysis;
 pub mod validate;
 pub mod walk;
 pub mod web_report;

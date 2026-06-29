@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV analysis plan", "type": "object", "required": ["units", "cross_unit_tasks"], "properties": { "units": { "type": "array" }, "cross_unit_tasks": { "type": "array" } } }

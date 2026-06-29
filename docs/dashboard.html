@@ -1,0 +1,1464 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>깃스시브이 구현 계획 대시보드</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8f5;
+      --panel: #ffffff;
+      --ink: #1e2528;
+      --muted: #5f696d;
+      --line: #d9dfdc;
+      --teal: #0f766e;
+      --teal-soft: #d9f2ec;
+      --blue: #2563eb;
+      --blue-soft: #dbeafe;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --red: #b91c1c;
+      --red-soft: #fee2e2;
+      --green: #15803d;
+      --green-soft: #dcfce7;
+      --gray-soft: #eef1ee;
+      --shadow: 0 16px 40px rgba(30, 37, 40, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    main {
+      min-height: 100vh;
+    }
+
+    .shell {
+      width: min(1440px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) auto;
+      gap: 20px;
+      align-items: start;
+      padding: 18px 0 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 820px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    .status-strip {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 260px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--teal);
+      flex: 0 0 auto;
+    }
+
+    .dot.amber {
+      background: var(--amber);
+    }
+
+    .dot.blue {
+      background: var(--blue);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(160px, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+
+    .metric {
+      min-height: 112px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      margin-top: 10px;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .metric-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: var(--gray-soft);
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", monospace;
+      font-size: 0.92em;
+      word-break: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .section {
+      margin-top: 18px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .section-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+      text-align: right;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .seg {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--muted);
+      padding: 7px 12px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .seg[aria-pressed="true"] {
+      border-color: var(--teal);
+      background: var(--teal-soft);
+      color: var(--teal);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      min-height: 156px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 15px;
+      box-shadow: var(--shadow);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .req-id {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 26px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.ready {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .badge.planned {
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .badge.open {
+      color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .badge.blocked {
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .card h3 {
+      margin: 10px 0 8px;
+      font-size: 16px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .progress {
+      margin-top: 14px;
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--gray-soft);
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--teal);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 10px;
+      align-items: center;
+      min-height: 54px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 10px;
+    }
+
+    .step-number {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--teal-soft);
+      color: var(--teal);
+      font-weight: 850;
+    }
+
+    .flow-step strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .flow-step span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .artifact-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .artifact {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", monospace;
+      font-size: 13px;
+      color: var(--ink);
+    }
+
+    .callout {
+      border-left: 4px solid var(--teal);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .callout p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .questions {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .question {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 11px 12px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media (max-width: 980px) {
+      .topbar,
+      .board {
+        grid-template-columns: 1fr;
+      }
+
+      .status-strip {
+        justify-content: flex-start;
+      }
+
+      .metrics,
+      .cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .section-note {
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: min(100vw - 20px, 560px);
+        padding-top: 14px;
+      }
+
+      .metrics,
+      .cards,
+      .artifact-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      h1 {
+        font-size: 31px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1>깃스시브이 구현 계획 대시보드</h1>
+          <p class="subtitle">
+            사양 확정 이후의 작업 패키지, 병렬 분담, 테스트 흐름을 한 화면에서 봅니다.
+          </p>
+        </div>
+        <div class="status-strip" aria-label="프로젝트 상태">
+          <span class="pill"><span class="dot"></span>MVP 완료</span>
+          <span class="pill"><span class="dot amber"></span>원격 동기화 완료</span>
+          <span class="pill"><span class="dot blue"></span>목표 완료</span>
+        </div>
+      </header>
+
+      <section class="metrics" aria-label="구현 계획 지표">
+        <div class="metric">
+          <div class="metric-label">현재 단계</div>
+          <div class="metric-value">v0.3.0 artifact-contract-v2</div>
+          <div class="metric-note">no-leak, source binding, gates, graph, synthesis 기반.</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">작업 패키지</div>
+          <div class="metric-value">10</div>
+          <div class="metric-note">WP0부터 WP9까지 완료, 후속은 버전 단위.</div>
+        </div>
+          <div class="metric">
+            <div class="metric-label">시험 상태</div>
+          <div class="metric-value">84 / 84</div>
+            <div class="metric-note">포맷, 클리피, 전체 시험 통과.</div>
+          </div>
+        <div class="metric">
+          <div class="metric-label">산출물 계약</div>
+          <div class="metric-value">23개</div>
+          <div class="metric-note">manifest, brief, graph, synthesis, follow-up 포함.</div>
+        </div>
+      </section>
+
+      <div class="board">
+        <section class="section" aria-labelledby="plan-title">
+          <div class="section-head">
+            <div>
+              <h2 id="plan-title">현재 빌딩 계획</h2>
+            </div>
+            <p class="section-note">MVP 뒤 버전 단위로 닫는 순서입니다.</p>
+          </div>
+
+          <div class="controls" aria-label="작업 패키지 필터">
+            <button class="seg" type="button" data-filter="all" aria-pressed="true">전체</button>
+            <button class="seg" type="button" data-filter="now" aria-pressed="false">지금</button>
+            <button class="seg" type="button" data-filter="parallel" aria-pressed="false">병렬</button>
+            <button class="seg" type="button" data-filter="later" aria-pressed="false">후속</button>
+            <button class="seg" type="button" data-filter="blocked" aria-pressed="false">확인</button>
+          </div>
+
+          <div class="cards">
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V020</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>민감 후보 진단 모드</h3>
+              <p><code>sensitive.json</code>, 1차 승인, 2차 원문 승인, 경로별 정적 신호 기록을 추가했습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V021</span>
+                <span class="badge ready">로컬 커밋</span>
+              </div>
+              <h3>승인 경로 오인 방지</h3>
+              <p><code>approved-raw</code> 경로가 감지된 민감 후보가 아니면 실패하도록 하드닝했습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V022</span>
+                <span class="badge ready">로컬 커밋</span>
+              </div>
+              <h3>승인 게이트 산출물</h3>
+              <p><code>gates.json</code>으로 민감 후보와 자동 실행 후보를 모델 입력·실행 승인 전에 제시합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V023</span>
+                <span class="badge ready">로컬 커밋</span>
+              </div>
+              <h3>읽기 슬라이스 계획</h3>
+              <p><code>slices.json</code>으로 본문 없이 경로·토큰·승인 플래그 기반 모델 입력 계획을 만듭니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V024</span>
+                <span class="badge ready">로컬 커밋</span>
+              </div>
+              <h3>산출물 연결성 검증</h3>
+              <p><code>validate</code>가 민감 후보, 게이트, 슬라이스 경로와 승인 플래그 불일치를 잡습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V025</span>
+                <span class="badge ready">로컬 커밋</span>
+              </div>
+              <h3>언어별 정적 신호</h3>
+              <p>승인 원문 모드가 Node, Python, PowerShell, Ruby 실행 토큰을 라벨로 기록합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V026</span>
+                <span class="badge ready">로컬 커밋</span>
+              </div>
+              <h3>기계 판독 요약</h3>
+              <p><code>review.json</code>으로 판정, 집계, 필요한 후속 액션을 다른 도구가 바로 읽게 합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V027</span>
+                <span class="badge ready">로컬 커밋</span>
+              </div>
+              <h3>실행별 웹 리포트</h3>
+              <p><code>report.html</code>로 판정, 승인 액션, 발견사항, 무실행 확인을 브라우저에서 봅니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V028</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>의존성 요약 산출물</h3>
+              <p><code>dependencies.json</code>에 직접 의존성 이름과 출처 종류만 남기고 버전·URL 원문은 저장하지 않습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V029</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>원격 URL 입력 경계</h3>
+              <p>원격 스냅샷 구현 전까지 <code>https://</code>와 <code>git@host:repo</code> 입력을 명확한 사용자 오류로 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V030</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>원격 주소 사용자 정보 가림</h3>
+              <p><code>source.json</code>에 깃 원격 주소를 기록할 때 토큰형 사용자 정보와 SSH 사용자 부분을 가립니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V031</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>의존성 산출물 연결성 검증</h3>
+              <p><code>dependencies.json</code>의 매니페스트 경로가 <code>inventory.json</code> 파일 목록에 없으면 V12로 실패합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V032</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>산출물 공통 메타데이터 검증</h3>
+              <p>모든 주요 JSON 산출물의 <code>run_id</code>와 <code>schema_version</code>이 실행 계약과 다르면 V13으로 실패합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V033</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>리뷰 요약 연결성 검증</h3>
+              <p><code>review.json</code>의 집계, 판정, 기본 제외 경로가 <code>findings</code>, <code>gates</code>, <code>slices</code>와 다르면 V14로 실패합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V034</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>필수 액션 연결성 검증</h3>
+              <p><code>review.json</code>의 <code>required_actions</code>가 승인 게이트와 한도 초과 슬라이스 여부와 다르면 V15로 실패합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V035</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>게이트 후보 경로 검증</h3>
+              <p><code>gates.json</code>의 민감 후보, 자동 실행 후보, 실행 관련 후보 경로가 <code>inventory.json</code>에 없으면 V16으로 실패합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V036</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>증거 경로 검증</h3>
+              <p><code>evidence.json</code>의 증거 경로가 <code>inventory.json</code>에 없으면 V17로 실패합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V037</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>증거 형태 검증</h3>
+              <p><code>content-line</code> 증거의 줄 범위와 <code>secret-name</code> 증거의 원문 미저장을 V18로 확인합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V038</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>URL형 입력 일반화</h3>
+              <p><code>file://</code>처럼 scheme이 있는 값도 경로 없음 오류가 아니라 저장소 URL 미지원 오류로 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V039</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>사용 문서 입력 경계</h3>
+              <p><code>README.md</code>와 <code>USAGE.md</code>가 URL 입력 거부와 로컬 검사 절차를 함께 안내합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V040</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>승인 경로 URL 거부</h3>
+              <p><code>--sensitive-path</code>도 저장소 상대 경로만 받으며 <code>file://</code> 같은 URL형 값은 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V041</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>원격 스냅샷 정책</h3>
+              <p>기본 <code>inspect</code>는 로컬 전용으로 두고, 향후 별도 명령에서 압축 내려받기와 체크섬 검증을 우선합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V042</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>실행 후보 기본 입력 제외</h3>
+              <p><code>slices.json</code>이 자동 실행 후보와 실행 관련 후보도 승인 전 기본 모델 입력에서 제외합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V043</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>실행 게이트 문구 정합성</h3>
+              <p><code>gates.json</code>의 실행 승인 문구가 모델 입력 전 승인까지 명시합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V044</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>민감 진단 ack 입력 계약</h3>
+              <p><code>redacted-summary</code>와 <code>approved-raw</code>가 승인 플래그와 정확한 ack 문구를 함께 요구합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V045</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>민감 게이트 ack 안내</h3>
+              <p><code>gates.json</code>의 민감 후보 승인 문구가 <code>--sensitive-review-ack</code>와 <code>--sensitive-raw-ack</code>를 안내합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V046</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>민감 진단 ack 확인 기록</h3>
+              <p><code>sensitive.json</code>이 <code>review_ack_confirmed</code>와 <code>raw_ack_confirmed</code>를 기록합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V047</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>리포트 ack 상태 표시</h3>
+              <p><code>report.md</code>의 민감 후보 처리 절이 1차·2차 ack 확인 상태를 표시합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V048</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>승인 ack 계약 구조화</h3>
+              <p><code>gates.json</code>과 <code>review.json</code>이 후속 도구용 ack 입력 계약을 배열로 기록합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V049</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>HTML ack 상태 표시</h3>
+              <p><code>report.html</code>의 민감 후보 처리 절이 1차·2차 ack 확인 상태를 표시합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V050</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>HTML ack 문구 표시</h3>
+              <p><code>report.html</code>의 승인 게이트가 필요한 ack 문구를 함께 표시합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V051</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>snapshot 체크섬 경계</h3>
+              <p><code>snapshot</code> 명령은 별도 명령으로 존재하되 <code>--sha256</code> 없이는 파일 생성 전에 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V052</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>checksum 형식 검증</h3>
+              <p><code>snapshot --sha256</code> 값이 64자리 hex가 아니면 파일 생성 전에 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V053</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>snapshot 출력 경계</h3>
+              <p><code>snapshot --out</code>은 새 경로 또는 빈 디렉터리만 허용하고 비어 있지 않으면 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V054</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>snapshot URL 경계</h3>
+              <p><code>snapshot</code>은 <code>https://</code> 원격 압축 주소만 허용하고 로컬·SSH URL은 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V055</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>archive URL 경계</h3>
+              <p><code>snapshot</code>은 <code>.zip</code>, <code>.tar.gz</code>, <code>.tgz</code> 압축 URL만 허용합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V056</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>snapshot URL userinfo 거부</h3>
+              <p><code>snapshot</code> URL authority에 사용자 정보가 있으면 토큰을 출력하지 않고 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V057</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>snapshot checksum 대조</h3>
+              <p>다운로드 단계가 재사용할 SHA-256 계산과 digest 비교를 순수 함수로 분리합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V058</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>URL 오류 출력 정리</h3>
+              <p><code>inspect</code>와 <code>snapshot</code>의 URL 거부 메시지는 사용자 정보와 query 원문을 복사하지 않습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V059</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>다운로드 체크섬 경계</h3>
+              <p>원격 바이트가 SHA-256 digest와 다르면 출력 디렉터리를 만들지 않고 중단합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V060</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>압축 해제 경계</h3>
+              <p>checksum 검증을 통과한 archive만 출력 디렉터리 안에 안전하게 풀도록 제한합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V061</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>snapshot 검사 연결</h3>
+              <p>압축 해제된 스냅샷 루트를 기존 <code>inspect</code> 산출물 흐름에 연결합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V062</span>
+                <span class="badge ready">푸시 완료</span>
+              </div>
+              <h3>snapshot 메타데이터</h3>
+              <p><code>run/source.json</code>에 검증된 URL, checksum, 압축 형식, 추출 경로를 기록합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V063</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>권장 사용 가이드</h3>
+              <p><code>README.md</code>는 권장 흐름을 짧게 두고, 상세 절차는 <code>USAGE.md</code>로 연결합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V064</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>언어별 깊은 분석 힌트</h3>
+              <p><code>slices.json</code> 파일 항목에 언어 힌트와 깊은 분석 후보 여부를 기록합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V065</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>slice 언어 힌트 검증</h3>
+              <p><code>validate</code>가 언어 힌트와 깊은 분석 후보 플래그를 인벤토리 기준으로 다시 확인합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V066</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>깊은 분석 읽기 순서</h3>
+              <p><code>sectors.json</code>의 권장 읽기 순서가 언어별 깊은 분석 대표 후보를 먼저 노출합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V067</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>깊은 분석 후보 집계</h3>
+              <p><code>review.json</code>이 언어별 깊은 분석 후보 수를 기계 판독 집계로 기록합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V068</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>리포트 후보 수 표시</h3>
+              <p><code>report.md</code>와 <code>report.html</code>이 깊은 분석 후보 수를 사람이 읽게 표시합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V069</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>읽기 순서 경로 검증</h3>
+              <p><code>validate</code>가 <code>sectors.json</code> 권장 읽기 순서의 허상 경로와 중복을 잡습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V070</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>슬라이스 순서 검증</h3>
+              <p><code>validate</code>가 <code>slices.json</code> 파일 순서가 <code>sectors.json</code> 권장 순서를 보존하는지 확인합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V071</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>슬라이스 중복 검증</h3>
+              <p><code>validate</code>가 <code>slices.json</code>에 같은 파일 경로가 반복되는 경우를 V23으로 거부합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V072</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>패키지 버전 동기화</h3>
+              <p><code>Cargo.toml</code>과 <code>Cargo.lock</code>의 <code>git-scv</code> 버전을 0.2.2로 맞춥니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V073</span>
+                <span class="badge ready">진단 완료</span>
+              </div>
+              <h3>깊은 분석 승인 경계 진단</h3>
+              <p>실행 관련 후보가 깊은 분석 후보여도 <code>review.json</code> 실행 승인 액션과 기본 모델 입력 제외 목록에 남는지 확인합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V074</span>
+                <span class="badge ready">진단 완료</span>
+              </div>
+              <h3>에이전트 안내 산출물 순서</h3>
+              <p><code>docs/agent-guide.md</code>가 23개 inspect 산출물 읽기 순서와 최신 승인 경계를 빠짐없이 안내하는지 맞춥니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V075</span>
+                <span class="badge ready">진단 완료</span>
+              </div>
+              <h3>Cargo 패키지 포함 경계</h3>
+              <p><code>Cargo.toml</code>의 <code>include</code>와 <code>repository</code> 메타데이터를 정리하고 <code>cargo package</code>로 설치 패키지를 검증합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V076</span>
+                <span class="badge ready">진단 완료</span>
+              </div>
+              <h3>CI 패키징 검증 연결</h3>
+              <p><code>.github/workflows/ci.yml</code>가 <code>cargo package</code>를 실행해 Cargo 패키지 포함 경계를 지속 검증합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V077</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>README 설치 경로</h3>
+              <p><code>README.md</code>가 GitHub 직접 설치와 로컬 체크아웃 설치를 안내하고, 로컬 설치 명령을 실제 바이너리 도움말까지 확인합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V078</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>CI 잠금 패키징</h3>
+              <p><code>cargo package --locked</code>로 공개 지속 통합의 패키징 검증을 README 설치 명령의 잠금 파일 계약과 맞춥니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V079</span>
+                <span class="badge ready">진단 완료</span>
+              </div>
+              <h3>공개 CI 추적 트리 진단</h3>
+              <p>공개 추적 파일만 복사한 임시 트리에서 서식, clippy, 단위 시험, 잠금 패키징 검증을 실행했습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V080</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>공개 문서 산출물 순서</h3>
+              <p><code>README.md</code>와 <code>USAGE.md</code>가 23개 산출물 계약과 v0.3.0 artifact-contract-v2 상태를 반영합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V081</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>로컬 사양 계약 동기화</h3>
+              <p><code>docs/spec</code>와 작업 패키지 문서가 23개 산출물, 9단계 흐름, V01–V25, T01–T12 범위를 반영합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V082</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>공개 소스 단계 주석</h3>
+              <p><code>inspect.rs</code>의 단계 순서 주석이 실제 9단계 흐름에서 <code>sensitive</code> 단계를 빠뜨리지 않게 맞춥니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V083</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>공개 추적 트리 재검증</h3>
+              <p>추적 파일 33개만 복사한 임시 트리에서 서식, 제품 코드 클리피, 공개 단위 시험, 잠금 패키징을 다시 통과했습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V084</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>필수 액션 사용법</h3>
+              <p><code>USAGE.md</code>가 <code>review.json.required_actions</code> 세 항목과 oversized 슬라이스의 의미를 실행 전 체크리스트로 설명합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V085</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>Markdown 필수 액션 표시</h3>
+              <p><code>report.md</code>의 기계 요약이 필수 액션 id, 경로 수, 필요한 ack 문구를 표시합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V086</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>필수 액션 단위 시험</h3>
+              <p><code>report.rs</code> 단위 시험이 민감 원문, 실행, oversized 필수 액션 요약을 모두 고정합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V087</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>공개 사용법 동기화</h3>
+              <p><code>USAGE.md</code>가 <code>report.md</code>에서 민감 후보 ack 상태와 필수 액션 목록을 먼저 읽도록 안내합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V088</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>README 권장 액션 안내</h3>
+              <p><code>README.md</code>의 권장 사용 절차가 리포트의 필수 액션 목록을 먼저 확인하도록 안내합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V089</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>HTML 필수 액션 시험</h3>
+              <p><code>web_report.rs</code> 단위 시험이 필수 액션 ack 표시와 필수 액션 없음 상태를 고정합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V090</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>에이전트 안내 동기화</h3>
+              <p><code>docs/agent-guide.md</code>가 세 필수 액션 id와 ack 배열 계약을 후속 에이전트에게 안내합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V091</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>완료 감사</h3>
+              <p>로컬 시험, 공개 패키지 목록, 추적 트리 23개 산출물, <code>security.json</code> 요약 일치를 분리해 확인했습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V092</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>아키텍처 의존성 동기화</h3>
+              <p><code>architecture.md</code>가 <code>snapshot.rs</code>와 현재 런타임 의존성 11개를 반영합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V093</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>목표 진행 재정렬</h3>
+              <p>blocked는 커밋·푸시 승인 대기 게이트로만 쓰고, 승인 뒤 같은 목표를 이어가도록 정리했습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V094</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>1400대 상태 감사</h3>
+              <p>이후 과제를 완료, 부분 완료, 보류로 분리해 다음 공개 기능 선택 기준을 정리했습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="blocked">
+              <div class="card-head">
+                <span class="req-id">WP0</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>환경 준비</h3>
+              <p>러스트 툴체인과 로컬 카고 경로를 확인했고, 검증 명령은 고정됐습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">WP1</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>명령 입구 검증</h3>
+              <p><code>cli.rs</code>, <code>errors.rs</code>, <code>main.rs</code>. T01·T02를 초록으로 만듭니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="parallel">
+              <div class="card-head">
+                <span class="req-id">WP2</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>원본 식별</h3>
+              <p><code>source.rs</code>. 깃 저장소와 일반 디렉터리 식별, T07 일부를 맡습니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="parallel">
+              <div class="card-head">
+                <span class="req-id">WP3</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>파일 탐색과 안전</h3>
+              <p><code>walk.rs</code>, <code>safety.rs</code>. 심볼릭 링크 미추적과 집계 불변식, T08.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="parallel">
+              <div class="card-head">
+                <span class="req-id">WP4</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>감지 규칙</h3>
+              <p><code>detect.rs</code>. D01–D13 전부와 비밀값 미열람, T03.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="later">
+              <div class="card-head">
+                <span class="req-id">WP5</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>증거와 발견사항</h3>
+              <p><code>evidence.rs</code>, <code>findings.rs</code>. 증거 없는 발견사항을 타입에서 거부, T04·T05.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="now">
+              <div class="card-head">
+                <span class="req-id">V095</span>
+                <span class="req-id">1406</span>
+                <span class="badge ready">검증 완료</span>
+              </div>
+              <h3>보안 요약 산출물</h3>
+              <p><code>security.json</code>이 판정, 필수 액션, 제외 경로, 한계, 원천 산출물 참조를 다른 도구가 먼저 읽기 쉽게 제공합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="later">
+              <div class="card-head">
+                <span class="req-id">WP6</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>검증 관문</h3>
+              <p><code>validate.rs</code>. V01–V25 결함 주입 시험을 개별 실패로 맞춥니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="later">
+              <div class="card-head">
+                <span class="req-id">WP7</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>산출물과 리포트</h3>
+              <p><code>artifacts.rs</code>, <code>report.rs</code>, <code>sectors.rs</code>. 산출물과 결정성, T06·T10.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="later">
+              <div class="card-head">
+                <span class="req-id">WP8</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>검사 흐름 조립</h3>
+              <p><code>inspect.rs</code>. 단계 실패 시에도 run.json을 마지막에 쓰도록 전체 흐름을 연결합니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+
+            <article class="card" data-group="later">
+              <div class="card-head">
+                <span class="req-id">WP9</span>
+                <span class="badge ready">완료</span>
+              </div>
+              <h3>전체 초록</h3>
+              <p><code>fmt</code>, <code>clippy</code>, <code>cargo test</code>, self-inspect까지 통과시키는 마무리입니다.</p>
+              <div class="progress" aria-label="100퍼센트 완료"><span style="width: 100%"></span></div>
+            </article>
+          </div>
+        </section>
+
+        <aside class="section" aria-label="구현 실행 계획">
+          <div class="section-head">
+            <h2>오늘의 실행 순서</h2>
+            <p class="section-note">검증된 변경을 버전 단위로 닫는 흐름.</p>
+          </div>
+
+          <div class="callout">
+            <strong>v0.3.0 artifact-contract-v2 보강이 진행 중입니다.</strong>
+            <p>no-leak, source fingerprint, gate binding, case package, graph, synthesis, follow-up artifact를 한 계약으로 맞춥니다.</p>
+          </div>
+
+          <div class="flow" aria-label="오늘의 실행 순서">
+            <div class="flow-step">
+              <div class="step-number">1</div>
+              <div><strong>완료된 기반</strong><span>v0.2.1 공개 패키지·설치 문서는 <code>2cad7e7</code>, 필수 액션 진단 보강은 <code>61ad5a5</code>, 리뷰 액션 리포팅은 <code>1e6e09e</code>, 보안 요약 산출물은 <code>c38070a</code>로 원격 동기화 완료.</span></div>
+            </div>
+            <div class="flow-step">
+              <div class="step-number">2</div>
+              <div><strong>현재 변경</strong><span>v0.3.0은 artifact-contract-v2, 23개 inspect 산출물, V25 leak scan, source/gate binding 계약으로 공개 문서와 제품 코드를 맞춥니다.</span></div>
+            </div>
+            <div class="flow-step">
+              <div class="step-number">3</div>
+              <div><strong>검증 상태</strong><span>포맷, 클리피, 전체 테스트, 패키징, 23개 산출물 inspect 검증을 통과 기준으로 둡니다.</span></div>
+            </div>
+            <div class="flow-step">
+              <div class="step-number">4</div>
+              <div><strong>다음 선택지</strong><span>현재 공개 변경 없음. 다음 공개 변경은 v0.3 범위 선정 뒤 대시보드 자동 생성기, 스킬 패키징, 격리 실행 검토 중 하나로 시작합니다.</span></div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head">
+              <h2>병렬 분담</h2>
+            </div>
+            <div class="artifact-grid" aria-label="병렬 분담">
+              <div class="artifact">민감 모드 · sensitive.rs</div>
+              <div class="artifact">승인 게이트 · cli.rs</div>
+              <div class="artifact">증거 검증 · validate.rs</div>
+              <div class="artifact">보안 요약 · security.json</div>
+              <div class="artifact">리포트 · report.md 출력</div>
+              <div class="artifact">공개 문서 · README/USAGE</div>
+              <div class="artifact">로컬 사양 · docs/spec</div>
+              <div class="artifact">로컬 회귀 · tests/</div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head">
+              <h2>고정 규칙</h2>
+            </div>
+            <div class="questions">
+              <div class="question">민감 후보는 기본 미열람. 원문은 2중 승인과 경로 목록이 있을 때만.</div>
+              <div class="question">공개 레포에는 실사용 설치와 실행에 필요한 파일만 남긴다.</div>
+              <div class="question">프로세스 생성 API 금지. 외부 git 명령도 금지하고 gix만 사용.</div>
+              <div class="question">inspect 산출물은 23개. manifest, brief, graph, synthesis, follow-up 포함.</div>
+              <div class="question">커밋 메시지는 버전 접두어를 포함한다.</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const filterButtons = Array.from(document.querySelectorAll("[data-filter]"));
+    const cards = Array.from(document.querySelectorAll(".card[data-group]"));
+
+    filterButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const filter = button.dataset.filter;
+
+        filterButtons.forEach((item) => {
+          item.setAttribute("aria-pressed", String(item === button));
+        });
+
+        cards.forEach((card) => {
+          const shouldShow = filter === "all" || card.dataset.group === filter;
+          card.classList.toggle("hidden", !shouldShow);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

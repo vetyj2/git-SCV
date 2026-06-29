@@ -4,19 +4,46 @@
 *.log
 .claude/
 /local/
+/private/
+/backups/
+/git-scv-backups/
+/.backups/
 
 .env
 .env.*
 !.env.example
+*.local
+*.local.*
+deploy_key
+deploy_key.*
+*_deploy_key
+*_deploy_key.*
+id_rsa
+id_rsa.*
+id_dsa
+id_dsa.*
+id_ecdsa
+id_ecdsa.*
+id_ed25519
+id_ed25519.*
+*.pem
+*.p12
+*.pfx
 
 /test-candi/
 /test-run/
 /scv-run/
 /scv-runs/
 
-# Local planning, specs, fixtures, and coordination notes.
-/docs/
-/tests/
+# Local planning and private coordination notes.
+/docs/internal/
+/docs/private/
+/Docs/internal/
+/Docs/private/
+/tests/output/
+/tests/tmp/
+/fixtures/private/
+/fixtures/local/
 /REQ.md
 /HANDOFF.md
 /CONTRIBUTING.md

@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV synthesis", "type": "object", "required": ["verdict", "safe_claim_made", "aggregate_safety_diagnosis"], "properties": { "verdict": { "type": "string" }, "safe_claim_made": { "const": false }, "aggregate_safety_diagnosis": { "type": "object" } } }

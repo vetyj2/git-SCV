@@ -20,6 +20,15 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Install Git-SCV from GitHub:
 
 ```sh
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.0 --locked
+cargo install --git https://github.com/vetyj2/git-SCV --rev <commit-sha> --locked
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.1 --locked --force
+git-scv --version
+```
+
+Installing from a moving branch is an advanced, unstable bootstrap path:
+
+```sh
 cargo install --git https://github.com/vetyj2/git-SCV --locked
 ```
 
@@ -40,6 +49,10 @@ cargo build
 ```sh
 git-scv inspect <repo-path> --out <run-dir>
 git-scv snapshot <archive-url> --out <snapshot-dir> --sha256 <hex>
+git-scv brief <run-dir>
+git-scv receipt create <run-dir> --agent Hermes --summary-file <summary.md> --summarized-to-user --blocked-actions-acknowledged
+git-scv case create <repo-path>
+git-scv case verify-source <case-id>
 ```
 
 `<repo-path>` must be a local directory. Repository URL inputs such as
@@ -62,6 +75,13 @@ and extracted source path.
 For detailed command examples, sensitive-candidate modes, and artifact reading
 order, see [USAGE.md](USAGE.md).
 
+For Hermes-style agent integration, per-repository temporary report packages,
+cleanup commands, and install/update/uninstall commands, see
+[docs/HERMES.md](docs/HERMES.md). A convenience wrapper is available at
+[`scripts/git-scv-hermes.sh`](scripts/git-scv-hermes.sh).
+The v0.3 implementation boundary is summarized in
+[docs/IMPLEMENTATION_STATUS_2026-06-29.md](docs/IMPLEMENTATION_STATUS_2026-06-29.md).
+
 The output directory must be new or empty. Git-SCV does not execute install,
 build, test, script, hook, binary, or container commands from the inspected
 repository.
@@ -74,6 +94,9 @@ report:
 
 ```text
 run.json
+artifact_manifest.json
+brief.json
+brief.md
 source.json
 inventory.json
 coverage.json
@@ -86,6 +109,12 @@ gates.json
 slices.json
 review.json
 security.json
+connection_graph.json
+analysis_plan.json
+cross_unit_analysis.json
+synthesis.json
+followup_plan.json
+agent_receipt.json (created after `git-scv receipt create`)
 report.md
 report.html
 ```
@@ -98,15 +127,27 @@ repository.
 1. Use `inspect` when the repository is already on disk.
 2. Use `snapshot` only when you have an HTTPS archive URL and a SHA-256 digest
    verified through a separate channel.
-3. Read `report.md` or `report.html` first, including the required action list,
-   then check `source.json`, `inventory.json`, `coverage.json`,
+3. Run `git-scv brief <run-dir>` first and summarize its verdict, required
+   actions, model-excluded path count, `artifact_manifest_sha256`,
+   `source_fingerprint_hash`, and `agent_read_receipt` before any next action.
+4. Read `report.md` or `report.html`, including the required action list, then
+   check `source.json`, `inventory.json`, `coverage.json`,
    `findings.json`, `evidence.json`, `dependencies.json`, `sensitive.json`,
-   `gates.json`, `slices.json`, `review.json`, and `security.json` before
-   approving any next action.
-4. Treat `secret-candidate` findings as unresolved review items, not as safe or
+   `gates.json`, `slices.json`, `review.json`, `security.json`,
+   `connection_graph.json`, `analysis_plan.json`, `cross_unit_analysis.json`,
+   `synthesis.json`, and `followup_plan.json` before approving any next action.
+5. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-5. Ask for explicit approval before running install, build, test, script, hook,
-   binary, or container commands from the inspected repository.
+6. When using case packages, run `git-scv case verify-source <case-id>` before
+   any install/build/test/run approval request.
+7. Ask for explicit approval before running install, build, test, script, hook,
+   binary, workflow, package-manager, or container commands from the inspected
+   repository.
+8. For agent-supplied unit analyses, run `git-scv validate-unit <run-dir>
+   unit-analysis/U0001.json` or `git-scv validate-units <run-dir>` before
+   treating unit claims as part of the case package. These validators check
+   schema shape, evidence refs, and path boundaries; they do not prove semantic
+   truth or malware absence.
 
 ## Sensitive Candidates
 
@@ -133,11 +174,45 @@ Optional sensitive-candidate review modes are explicit:
   URL-like path values, and still never stores raw sensitive contents in
   artifacts.
 
+## Cleanup And Uninstall
+
+Git-SCV writes artifacts only to the output directories you choose with `--out`.
+After reviewing a report package, remove that directory directly:
+
+```sh
+rm -rf <run-dir>
+rm -rf <snapshot-dir>
+```
+
+Managed case packages can be removed with:
+
+```sh
+git-scv case delete <case-id> --ack delete-git-scv-case
+git-scv case prune --all --ack delete-all-git-scv-cases
+```
+
+If you use the Hermes harness script, it creates per-case packages under
+`${TMPDIR:-/tmp}/git-scv-cases` by default:
+
+```sh
+scripts/git-scv-hermes.sh cleanup <case-dir> --ack delete-git-scv-case
+scripts/git-scv-hermes.sh cleanup-all --ack delete-all-git-scv-cases
+```
+
+Uninstall the binary installed by Cargo:
+
+```sh
+cargo uninstall git-scv
+```
+
+Git-SCV does not create background services, shell hooks, git hooks, or global
+configuration.
+
 ## Status
 
-v0.2.2 prepares no-exec local and verified HTTPS snapshot inspection, sensitive
-candidate review gates, path-only model input slices, human and HTML reports,
-machine-readable security summaries, and Cargo package/install checks.
+v0.3.0 is a schema-breaking artifact-contract-v2 release. v0.2 artifacts are
+not migrated; re-run inspection. Git-SCV does not claim repositories are safe,
+clean, trusted, secure, safe-to-install, or safe-to-run.
 
 ## License
 

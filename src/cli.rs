@@ -2,7 +2,8 @@
 //! 인자 구조와 도움말, 실행 전 입력 검증을 맡는다.
 
 use crate::errors::ScvError;
-use crate::model::SensitiveReviewMode;
+use crate::model::{PathPrivacyMode, ReceiptNextAction, SensitiveReviewMode};
+use crate::redaction::{redact_url_for_error, strip_url_query_fragment, url_has_userinfo};
 use clap::Parser;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -34,6 +35,30 @@ enum Subcommand {
     /// 원격 압축 스냅샷을 내려받아 체크섬 검증 뒤 로컬 검사 대상으로 준비한다
     #[command(after_help = NO_EXEC_HELP)]
     Snapshot(SnapshotArgs),
+    /// 기존 검사 산출물 디렉터리에서 에이전트용 필수 브리핑을 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Brief(BriefArgs),
+    /// 에이전트가 brief/gates를 읽고 사용자에게 요약했음을 source/manifest에 묶어 기록한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Receipt(ReceiptArgs),
+    /// 검사 case package를 만들고 조회한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Case(CaseArgs),
+    /// unit-analysis JSON 하나를 검증한다
+    #[command(after_help = NO_EXEC_HELP)]
+    ValidateUnit(ValidateUnitArgs),
+    /// unit-analysis 디렉터리를 검증한다
+    #[command(after_help = NO_EXEC_HELP)]
+    ValidateUnits(RunDirArgs),
+    /// synthesis artifact 상태를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Synthesize(RunDirArgs),
+    /// followup_plan artifact 상태를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    FollowupPlan(RunDirArgs),
+    /// followup_plan artifact를 검증한다
+    #[command(after_help = NO_EXEC_HELP)]
+    ValidateFollowup(RunDirArgs),
 }
 
 #[derive(clap::Args)]
@@ -61,6 +86,9 @@ pub struct InspectArgs {
     /// 원문 분석을 승인할 저장소 상대 경로
     #[arg(long = "sensitive-path")]
     pub sensitive_paths: Vec<PathBuf>,
+    /// artifact/report에 저장할 경로 privacy 정책
+    #[arg(long, value_enum, default_value = "repo-relative")]
+    pub path_privacy: PathPrivacyMode,
 }
 
 #[derive(clap::Args)]
@@ -75,15 +103,176 @@ pub struct SnapshotArgs {
     pub sha256: Option<String>,
 }
 
+#[derive(clap::Args)]
+pub struct BriefArgs {
+    /// inspect 또는 snapshot run 산출물 디렉터리
+    pub run_dir: PathBuf,
+}
+
+#[derive(clap::Args)]
+pub struct ReceiptArgs {
+    #[command(subcommand)]
+    pub command: ReceiptSubcommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum ReceiptSubcommand {
+    /// agent_receipt.json을 생성한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Create(ReceiptCreateArgs),
+}
+
+#[derive(clap::Args)]
+pub struct ReceiptCreateArgs {
+    /// inspect 또는 snapshot run 산출물 디렉터리
+    pub run_dir: PathBuf,
+    /// receipt를 남기는 에이전트 이름
+    #[arg(long)]
+    pub agent: String,
+    /// 사용자가 받은 에이전트 요약 파일. 원문은 저장하지 않고 sha256만 저장한다
+    #[arg(long)]
+    pub summary_file: PathBuf,
+    /// 에이전트가 brief 요약을 사용자에게 제시했음을 확인
+    #[arg(long)]
+    pub summarized_to_user: bool,
+    /// 에이전트가 차단된 액션과 승인 요구를 확인했음을 확인
+    #[arg(long)]
+    pub blocked_actions_acknowledged: bool,
+    /// receipt 뒤에 요청하려는 다음 행동
+    #[arg(long, value_enum, default_value = "none")]
+    pub next_action: ReceiptNextAction,
+}
+
+#[derive(clap::Args)]
+pub struct CaseArgs {
+    #[command(subcommand)]
+    pub command: CaseSubcommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum CaseSubcommand {
+    /// 새 case package를 만든다
+    #[command(after_help = NO_EXEC_HELP)]
+    Create(CaseCreateArgs),
+    /// case 목록을 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    List,
+    /// case 세부 정보를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Show(CaseIdArgs),
+    /// case brief를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Brief(CaseIdArgs),
+    /// 현재 source fingerprint가 case와 같은지 검증한다
+    #[command(after_help = NO_EXEC_HELP)]
+    VerifySource(CaseIdArgs),
+    /// case source 상태를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Status(CaseIdArgs),
+    /// case package를 삭제한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Delete(CaseDeleteArgs),
+    /// case root의 모든 case package를 삭제한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Prune(CasePruneArgs),
+    /// case root 상태를 점검한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Doctor,
+}
+
+#[derive(clap::Args)]
+pub struct CaseCreateArgs {
+    /// 검사할 로컬 저장소 경로
+    pub repo_path: PathBuf,
+    /// artifact/report에 저장할 경로 privacy 정책
+    #[arg(long, value_enum, default_value = "repo-relative")]
+    pub path_privacy: PathPrivacyMode,
+}
+
+#[derive(clap::Args)]
+pub struct CaseIdArgs {
+    /// case id
+    pub case_id: String,
+}
+
+#[derive(clap::Args)]
+pub struct CaseDeleteArgs {
+    /// case id
+    pub case_id: String,
+    /// 삭제 확인 문구
+    #[arg(long)]
+    pub ack: String,
+}
+
+#[derive(clap::Args)]
+pub struct CasePruneArgs {
+    /// 모든 case package 삭제
+    #[arg(long)]
+    pub all: bool,
+    /// 삭제 확인 문구
+    #[arg(long)]
+    pub ack: String,
+}
+
+#[derive(clap::Args)]
+pub struct RunDirArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+}
+
+#[derive(clap::Args)]
+pub struct ValidateUnitArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// unit-analysis JSON 파일
+    pub unit_file: PathBuf,
+}
+
 pub enum Invocation {
     Inspect(InspectArgs),
     Snapshot(SnapshotArgs),
+    Brief(BriefArgs),
+    ReceiptCreate(ReceiptCreateArgs),
+    CaseCreate(CaseCreateArgs),
+    CaseList,
+    CaseShow(CaseIdArgs),
+    CaseBrief(CaseIdArgs),
+    CaseVerifySource(CaseIdArgs),
+    CaseStatus(CaseIdArgs),
+    CaseDelete(CaseDeleteArgs),
+    CasePrune(CasePruneArgs),
+    CaseDoctor,
+    ValidateUnit(ValidateUnitArgs),
+    ValidateUnits(RunDirArgs),
+    Synthesize(RunDirArgs),
+    FollowupPlan(RunDirArgs),
+    ValidateFollowup(RunDirArgs),
 }
 
 pub fn parse() -> Invocation {
     match Cli::parse().command {
         Subcommand::Inspect(args) => Invocation::Inspect(args),
         Subcommand::Snapshot(args) => Invocation::Snapshot(args),
+        Subcommand::Brief(args) => Invocation::Brief(args),
+        Subcommand::Receipt(args) => match args.command {
+            ReceiptSubcommand::Create(args) => Invocation::ReceiptCreate(args),
+        },
+        Subcommand::Case(args) => match args.command {
+            CaseSubcommand::Create(args) => Invocation::CaseCreate(args),
+            CaseSubcommand::List => Invocation::CaseList,
+            CaseSubcommand::Show(args) => Invocation::CaseShow(args),
+            CaseSubcommand::Brief(args) => Invocation::CaseBrief(args),
+            CaseSubcommand::VerifySource(args) => Invocation::CaseVerifySource(args),
+            CaseSubcommand::Status(args) => Invocation::CaseStatus(args),
+            CaseSubcommand::Delete(args) => Invocation::CaseDelete(args),
+            CaseSubcommand::Prune(args) => Invocation::CasePrune(args),
+            CaseSubcommand::Doctor => Invocation::CaseDoctor,
+        },
+        Subcommand::ValidateUnit(args) => Invocation::ValidateUnit(args),
+        Subcommand::ValidateUnits(args) => Invocation::ValidateUnits(args),
+        Subcommand::Synthesize(args) => Invocation::Synthesize(args),
+        Subcommand::FollowupPlan(args) => Invocation::FollowupPlan(args),
+        Subcommand::ValidateFollowup(args) => Invocation::ValidateFollowup(args),
     }
 }
 
@@ -186,67 +375,9 @@ fn is_https_snapshot_url(value: &str) -> bool {
     value.to_ascii_lowercase().starts_with("https://")
 }
 
-fn url_has_userinfo(value: &str) -> bool {
-    let Some((_scheme, after_scheme)) = value.split_once("://") else {
-        return false;
-    };
-    let authority_end = after_scheme
-        .find(['/', '?', '#'])
-        .unwrap_or(after_scheme.len());
-    let authority = &after_scheme[..authority_end];
-    authority.contains('@')
-}
-
 fn is_supported_archive_url(value: &str) -> bool {
-    let path = value
-        .split_once('#')
-        .map_or(value, |(before_fragment, _)| before_fragment)
-        .split_once('?')
-        .map_or(value, |(before_query, _)| before_query)
-        .to_ascii_lowercase();
+    let path = strip_url_query_fragment(value).to_ascii_lowercase();
     path.ends_with(".zip") || path.ends_with(".tar.gz") || path.ends_with(".tgz")
-}
-
-fn redact_url_for_error(value: &str) -> String {
-    let (without_fragment, had_fragment) = match value.split_once('#') {
-        Some((before, _)) => (before, true),
-        None => (value, false),
-    };
-    let (without_query, had_query) = match without_fragment.split_once('?') {
-        Some((before, _)) => (before, true),
-        None => (without_fragment, false),
-    };
-
-    let mut redacted = redact_url_userinfo(without_query)
-        .or_else(|| redact_scp_like_userinfo(without_query))
-        .unwrap_or_else(|| without_query.into());
-    if had_query {
-        redacted.push_str("?...");
-    }
-    if had_fragment {
-        redacted.push_str("#...");
-    }
-    redacted
-}
-
-fn redact_url_userinfo(value: &str) -> Option<String> {
-    let (scheme, after_scheme) = value.split_once("://")?;
-    let authority_start = scheme.len() + "://".len();
-    let path_start = after_scheme
-        .find('/')
-        .map_or(value.len(), |offset| authority_start + offset);
-    let authority = &value[authority_start..path_start];
-    let (_userinfo, host) = authority.rsplit_once('@')?;
-    Some(format!("{}://***@{}{}", scheme, host, &value[path_start..]))
-}
-
-fn redact_scp_like_userinfo(value: &str) -> Option<String> {
-    let (user_host, repo_part) = value.split_once(':')?;
-    let (_userinfo, host) = user_host.rsplit_once('@')?;
-    if host.contains(std::path::MAIN_SEPARATOR) || repo_part.is_empty() {
-        return None;
-    }
-    Some(format!("***@{}:{}", host, repo_part))
 }
 
 fn usage<T>(message: String) -> Result<T, ScvError> {

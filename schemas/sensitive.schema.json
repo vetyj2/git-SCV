@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV sensitive", "type": "object", "required": ["schema_version", "run_id", "raw_content_stored", "candidates"], "properties": { "schema_version": { "type": "string" }, "run_id": { "type": "string" }, "raw_content_stored": { "const": false }, "candidates": { "type": "array" } } }

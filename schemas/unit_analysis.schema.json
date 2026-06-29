@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV unit analysis", "type": "object", "required": ["unit_id", "allowed_paths", "forbidden_paths", "claims"], "properties": { "unit_id": { "type": "string" }, "allowed_paths": { "type": "array" }, "forbidden_paths": { "type": "array" }, "claims": { "type": "array" } } }

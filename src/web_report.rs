@@ -262,7 +262,12 @@ mod tests {
                     "include-approved-sensitive-raw-in-diagnostic-input",
                 ],
             ),
-            action("execution-review", true, vec!["build.rs"], vec![]),
+            action(
+                "execution-model-input-review",
+                true,
+                vec!["build.rs"],
+                vec![],
+            ),
             action("not-required", false, vec!["ignored"], vec!["ignored-ack"]),
         ]);
 
@@ -271,7 +276,7 @@ mod tests {
         assert!(html.contains(
             "ack review-sensitive-candidates, include-approved-sensitive-raw-in-diagnostic-input"
         ));
-        assert!(html.contains("<strong>execution-review</strong>"));
+        assert!(html.contains("<strong>execution-model-input-review</strong>"));
         assert!(!html.contains("not-required"));
         assert!(!html.contains("ignored-ack"));
     }

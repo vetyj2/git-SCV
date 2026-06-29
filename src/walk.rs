@@ -21,6 +21,8 @@ pub fn walk(root: &Path, run_id: &str) -> Result<InventoryArtifact, ScvError> {
     })?;
     let mut entries = Vec::new();
     let mut skipped = Vec::new();
+    let mut limits = Limits::default();
+    let mut symlink_count = 0_u64;
     let mut iterator = WalkDir::new(&resolved_root)
         .follow_links(false)
         .sort_by_file_name()
@@ -45,6 +47,27 @@ pub fn walk(root: &Path, run_id: &str) -> Result<InventoryArtifact, ScvError> {
         }
 
         let relative = relative_path(&resolved_root, dir_entry.path());
+        if dir_entry.depth() as u64 > limits.max_depth {
+            push_limit_reason(&mut limits, "path-depth-limit-exceeded");
+            if dir_entry.file_type().is_dir() {
+                iterator.skip_current_dir();
+            }
+            continue;
+        }
+        if relative.len() as u64 > limits.max_path_bytes {
+            push_limit_reason(&mut limits, "path-byte-limit-exceeded");
+            if dir_entry.file_type().is_dir() {
+                iterator.skip_current_dir();
+            }
+            continue;
+        }
+        if (entries.len() + skipped.len()) as u64 >= limits.max_entries {
+            push_limit_reason(&mut limits, "local-entry-limit-exceeded");
+            if dir_entry.file_type().is_dir() {
+                iterator.skip_current_dir();
+            }
+            continue;
+        }
         if relative == ".git" && dir_entry.file_type().is_dir() {
             skipped.push(Skip {
                 path: relative,
@@ -76,6 +99,11 @@ pub fn walk(root: &Path, run_id: &str) -> Result<InventoryArtifact, ScvError> {
         };
 
         if kind == EntryKind::Symlink {
+            symlink_count += 1;
+            if symlink_count > limits.max_symlinks {
+                push_limit_reason(&mut limits, "symlink-limit-exceeded");
+                continue;
+            }
             skipped.push(Skip {
                 path: relative.clone(),
                 reason: SkipReason::Symlink,
@@ -109,7 +137,7 @@ pub fn walk(root: &Path, run_id: &str) -> Result<InventoryArtifact, ScvError> {
         run_id: run_id.into(),
         root: resolved_root.display().to_string(),
         policy: Policy::default(),
-        limits: Limits::default(),
+        limits,
         entries,
         skipped,
         totals: Totals {
@@ -118,6 +146,18 @@ pub fn walk(root: &Path, run_id: &str) -> Result<InventoryArtifact, ScvError> {
             skipped: skipped_count,
         },
     })
+}
+
+fn push_limit_reason(limits: &mut Limits, reason: &str) {
+    if !limits
+        .exceeded_reason_codes
+        .iter()
+        .any(|item| item == reason)
+    {
+        limits.exceeded_reason_codes.push(reason.into());
+        limits.exceeded_reason_codes.sort();
+    }
+    limits.truncation_recorded = true;
 }
 
 fn entry_kind(file_type: &fs::FileType) -> EntryKind {

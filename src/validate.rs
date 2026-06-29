@@ -91,7 +91,7 @@ pub fn validate(data: &RunData) -> Result<(), Vec<String>> {
         .collect::<BTreeSet<_>>();
     let prompt_execution_paths = data
         .gates
-        .execution_review
+        .execution_model_input_review
         .paths
         .iter()
         .map(String::as_str)
@@ -397,8 +397,17 @@ fn evidence_shape_error(item: &crate::model::Evidence) -> bool {
             item.lines.is_some()
         }
     };
-    let invalid_excerpt = item.kind == EvidenceKind::SecretName && item.excerpt.is_some();
-    invalid_lines || invalid_excerpt
+    let invalid_json_pointer = item.kind == EvidenceKind::ContentLine
+        && item.json_pointer.is_none()
+        || item.kind != EvidenceKind::ContentLine && item.json_pointer.is_some();
+    let invalid_redacted_excerpt = match item.kind {
+        EvidenceKind::ContentLine => item.redacted_excerpt.is_none(),
+        EvidenceKind::FilePresence | EvidenceKind::SymlinkRecord | EvidenceKind::SecretName => {
+            item.redacted_excerpt.is_some()
+        }
+    };
+    let invalid_raw_storage = item.value_stored || item.raw_excerpt_stored;
+    invalid_lines || invalid_json_pointer || invalid_redacted_excerpt || invalid_raw_storage
 }
 
 fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
@@ -458,6 +467,31 @@ fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
             "security.json",
             &data.security.schema_version,
             &data.security.run_id,
+        ),
+        (
+            "connection_graph.json",
+            &data.connection_graph.schema_version,
+            &data.connection_graph.run_id,
+        ),
+        (
+            "analysis_plan.json",
+            &data.analysis_plan.schema_version,
+            &data.analysis_plan.run_id,
+        ),
+        (
+            "cross_unit_analysis.json",
+            &data.cross_unit_analysis.schema_version,
+            &data.cross_unit_analysis.run_id,
+        ),
+        (
+            "synthesis.json",
+            &data.synthesis.schema_version,
+            &data.synthesis.run_id,
+        ),
+        (
+            "followup_plan.json",
+            &data.followup_plan.schema_version,
+            &data.followup_plan.run_id,
         ),
     ]
 }
@@ -543,20 +577,107 @@ fn review_summary_mismatches(data: &RunData) -> Vec<&'static str> {
         mismatches.push("default_model_excluded_paths");
     }
 
-    let expected_verdict = if data.gates.sensitive_raw_review.approval_required
-        || data.gates.execution_review.approval_required
+    let unsupported_surface = coverage_has_insufficient_surface(&data.coverage);
+    let expected_verdict = if !data.coverage.limit_reason_codes.is_empty() || unsupported_surface {
+        "insufficient-coverage"
+    } else if data.gates.sensitive_raw_review.approval_required
+        || data.gates.execution_model_input_review.approval_required
+        || data.gates.execution_command_review.approval_required
     {
         "approval-required"
     } else if !data.findings.findings.is_empty() {
         "review-required"
     } else {
-        "no-findings-within-observed-scope"
+        "no-blocker-observed"
     };
-    if data.review.verdict != expected_verdict {
+    if data.review.verdict != expected_verdict || !allowed_verdict(&data.review.verdict) {
         mismatches.push("verdict");
+    }
+    if data.review.safe_claim_made {
+        mismatches.push("safe_claim_made");
+    }
+    if data.review.may_user_run_install {
+        mismatches.push("may_user_run_install");
+    }
+    if !data.review.may_agent_request_run_approval {
+        mismatches.push("may_agent_request_run_approval");
+    }
+    if data.review.may_agent_run_without_user {
+        mismatches.push("may_agent_run_without_user");
+    }
+    let actual_reason_codes = data
+        .review
+        .reason_codes
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let expected_reason_codes = expected_reason_codes(data);
+    if actual_reason_codes != expected_reason_codes {
+        mismatches.push("reason_codes");
     }
 
     mismatches
+}
+
+fn allowed_verdict(verdict: &str) -> bool {
+    matches!(
+        verdict,
+        "blocked-pending-review"
+            | "approval-required"
+            | "review-required"
+            | "no-blocker-observed"
+            | "insufficient-coverage"
+            | "stale-source"
+            | "failed"
+    )
+}
+
+fn expected_reason_codes(data: &RunData) -> BTreeSet<&str> {
+    let mut codes = BTreeSet::new();
+    if !data.coverage.limit_reason_codes.is_empty() {
+        codes.extend(data.coverage.limit_reason_codes.iter().map(String::as_str));
+    }
+    if coverage_has_insufficient_surface(&data.coverage) {
+        codes.insert("unsupported-surface-name-detected");
+    }
+    if data.gates.sensitive_raw_review.approval_required {
+        codes.insert("sensitive-candidates-present");
+    }
+    if data.gates.execution_model_input_review.approval_required
+        || data.gates.execution_command_review.approval_required
+    {
+        codes.insert("execution-candidates-present");
+    }
+    if data
+        .slices
+        .slices
+        .iter()
+        .any(|slice| slice.over_token_limit)
+    {
+        codes.insert("slice-token-limit-exceeded");
+    }
+    if !data.findings.findings.is_empty() {
+        codes.insert("findings-present");
+    }
+    if data
+        .source
+        .git
+        .as_ref()
+        .is_some_and(|git| git.is_repo && git.dirty.is_none())
+    {
+        codes.insert("source-dirty-unknown");
+    }
+    if codes.is_empty() {
+        codes.insert("observed-scope-no-blocker");
+    }
+    codes
+}
+
+fn coverage_has_insufficient_surface(coverage: &crate::model::CoverageArtifact) -> bool {
+    coverage
+        .capabilities
+        .iter()
+        .any(|capability| capability.verdict_effect.as_deref() == Some("insufficient-coverage"))
 }
 
 fn review_action_mismatches(data: &RunData) -> Vec<&'static str> {
@@ -568,7 +689,7 @@ fn review_action_mismatches(data: &RunData) -> Vec<&'static str> {
             duplicate_id = true;
         }
     }
-    if duplicate_id || actions.len() != 3 {
+    if duplicate_id || actions.len() != 4 {
         mismatches.push("required_action_ids");
     }
 
@@ -583,10 +704,18 @@ fn review_action_mismatches(data: &RunData) -> Vec<&'static str> {
     check_action(
         &mut mismatches,
         &actions,
-        "execution-review",
-        data.gates.execution_review.approval_required,
-        &data.gates.execution_review.paths,
-        &data.gates.execution_review.acknowledgements,
+        "execution-model-input-review",
+        data.gates.execution_model_input_review.approval_required,
+        &data.gates.execution_model_input_review.paths,
+        &data.gates.execution_model_input_review.acknowledgements,
+    );
+    check_action(
+        &mut mismatches,
+        &actions,
+        "execution-command-review",
+        data.gates.execution_command_review.approval_required,
+        &[],
+        &data.gates.execution_command_review.acknowledgements,
     );
     check_action(
         &mut mismatches,
@@ -649,6 +778,21 @@ fn security_summary_mismatches(data: &RunData) -> Vec<&'static str> {
     if data.security.verdict != data.review.verdict {
         mismatches.push("verdict");
     }
+    if data.security.safe_claim_made != data.review.safe_claim_made {
+        mismatches.push("safe_claim_made");
+    }
+    if data.security.may_user_run_install != data.review.may_user_run_install {
+        mismatches.push("may_user_run_install");
+    }
+    if data.security.may_agent_request_run_approval != data.review.may_agent_request_run_approval {
+        mismatches.push("may_agent_request_run_approval");
+    }
+    if data.security.may_agent_run_without_user != data.review.may_agent_run_without_user {
+        mismatches.push("may_agent_run_without_user");
+    }
+    if data.security.reason_codes != data.review.reason_codes {
+        mismatches.push("reason_codes");
+    }
     if data.security.action_required
         != data
             .review
@@ -709,6 +853,11 @@ pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
         errors.push("V05: 무실행 문장 누락".into());
     }
 
+    let leak_errors = artifact_leak_errors(out_dir);
+    if !leak_errors.is_empty() {
+        errors.push(format!("V25: 산출물 누출 의심: {}", leak_errors.join(", ")));
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
@@ -716,7 +865,89 @@ pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
     }
 }
 
-const ARTIFACTS: [&str; 15] = [
+fn artifact_leak_errors(out_dir: &Path) -> Vec<String> {
+    let mut errors = Vec::new();
+    for name in ARTIFACTS {
+        let path = out_dir.join(name);
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        errors.extend(scan_artifact_text(name, &text));
+    }
+    errors.sort();
+    errors.dedup();
+    errors
+}
+
+fn scan_artifact_text(name: &str, text: &str) -> Vec<String> {
+    let lower = text.to_ascii_lowercase();
+    let compact = lower
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    let mut errors = Vec::new();
+
+    for marker in [
+        "git_scv_fake_token_do_not_use",
+        "git_scv_fake_bearer_do_not_use",
+        "ghp_fake",
+        "github_pat_",
+    ] {
+        if lower.contains(marker) {
+            errors.push(format!("{name}:fake-secret-marker"));
+        }
+    }
+    for raw_flag in [
+        "\"raw_args_stored\":true",
+        "\"raw_excerpt_stored\":true",
+        "\"raw_content_stored\":true",
+        "\"value_stored\":true",
+    ] {
+        if compact.contains(raw_flag) {
+            errors.push(format!("{name}:raw-storage-flag"));
+        }
+    }
+    if lower.contains("authorization: bearer") || lower.contains("bearer abc") {
+        errors.push(format!("{name}:authorization-like"));
+    }
+    if lower.contains("token=") || lower.contains("access_token=") || lower.contains("auth_token=")
+    {
+        errors.push(format!("{name}:token-assignment"));
+    }
+    if lower.contains("\"postinstall\": \"") || lower.contains("\\\"postinstall\\\": \\\"") {
+        errors.push(format!("{name}:raw-lifecycle-script"));
+    }
+    if contains_url_query_or_fragment(text) {
+        errors.push(format!("{name}:url-query-or-fragment"));
+    }
+
+    errors
+}
+
+fn contains_url_query_or_fragment(text: &str) -> bool {
+    text.split_whitespace().any(|token| {
+        let Some(scheme_index) = token.find("://") else {
+            return false;
+        };
+        let before_scheme = &token[..scheme_index];
+        if before_scheme
+            .chars()
+            .rev()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.'))
+            .count()
+            == 0
+        {
+            return false;
+        }
+        let urlish = &token[scheme_index + "://".len()..];
+        urlish.contains('?') || urlish.contains('#')
+    })
+}
+
+const ARTIFACTS: [&str; 23] = [
+    "artifact_manifest.json",
+    "brief.json",
+    "brief.md",
     "run.json",
     "source.json",
     "inventory.json",
@@ -730,6 +961,11 @@ const ARTIFACTS: [&str; 15] = [
     "slices.json",
     "review.json",
     "security.json",
+    "connection_graph.json",
+    "analysis_plan.json",
+    "cross_unit_analysis.json",
+    "synthesis.json",
+    "followup_plan.json",
     "report.md",
     "report.html",
 ];

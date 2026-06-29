@@ -1,6 +1,6 @@
 [package]
 name = "git-scv"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "A Rust workflow harness for evidence-backed source code review."
@@ -9,12 +9,20 @@ repository = "https://github.com/vetyj2/git-SCV"
 include = [
   "/Cargo.lock",
   "/Cargo.toml",
+  "/CHANGELOG.md",
   "/LICENSE-APACHE",
   "/LICENSE-MIT",
+  "/HERMES.md",
   "/README.md",
+  "/SECURITY.md",
   "/USAGE.md",
+  "/docs/**",
+  "/fixtures/**",
   "/rust-toolchain.toml",
+  "/schemas/**",
+  "/scripts/**",
   "/src/**",
+  "/tests/**",
 ]
 
 # Keep dependencies small. Do not add process-spawning crates.

@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV cross-unit analysis", "type": "object", "required": ["input_units", "aggregate_paths", "followup_required"], "properties": { "input_units": { "type": "array" }, "aggregate_paths": { "type": "array" }, "followup_required": { "type": "boolean" } } }

@@ -1,0 +1,28 @@
+# Artifact Contract
+
+Git-SCV 0.3 uses `artifact-contract-v2` for the manifest and v2 agent-facing
+artifacts. v0.2 artifacts are not migrated; re-run inspection.
+
+Core rules:
+
+- raw command-line args are not stored; `run.json.command.raw_args_stored` is
+  `false`
+- execution-related evidence stores redacted excerpts only
+- sensitive raw content is not stored by default
+- `artifact_manifest.json` hashes the inspected artifact set
+- `brief.json` includes `artifact_manifest_sha256` and
+  `source_fingerprint_hash`
+- `agent_receipt.json` binds the agent acknowledgement to the same manifest
+  and source fingerprint
+- default path privacy is repo-relative
+- `connection_graph.json` and `analysis_plan.json` describe reachability and
+  unit/cross-unit review work without storing raw command bodies
+- `cross_unit_analysis.json`, `synthesis.json`, and `followup_plan.json` keep
+  aggregate risk, whole-repo diagnosis limits, and required next actions
+  machine-readable
+- `validate-unit` validates agent unit-analysis schema shape, evidence links,
+  and path boundaries, but not semantic truth
+
+Forbidden verdict claims include `safe`, `safe-to-install`, `safe-to-run`,
+`clean`, `trusted`, and `secure`. Use `no-blocker-observed` only for the
+observed scope and never as a safety guarantee.

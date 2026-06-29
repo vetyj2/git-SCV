@@ -4,8 +4,9 @@
 //! 하지 않는다.
 
 use crate::model::{
-    Category, FindingsArtifact, GateArtifact, Priority, ReviewAction, ReviewArtifact, ReviewCounts,
-    SecurityArtifact, SliceArtifact, NO_EXEC_SENTENCE, SCHEMA_VERSION,
+    Category, CoverageArtifact, FindingsArtifact, GateArtifact, Priority, ReviewAction,
+    ReviewArtifact, ReviewCounts, SecurityArtifact, SliceArtifact, NO_EXEC_SENTENCE,
+    SCHEMA_VERSION,
 };
 use std::collections::BTreeSet;
 
@@ -13,6 +14,8 @@ pub fn build(
     findings: &FindingsArtifact,
     gates: &GateArtifact,
     slices: &SliceArtifact,
+    coverage: &CoverageArtifact,
+    dirty_unknown: bool,
     run_id: &str,
 ) -> ReviewArtifact {
     let high_priority_findings = findings
@@ -52,14 +55,36 @@ pub fn build(
         .into_iter()
         .collect::<Vec<_>>();
 
+    let sensitive_gate = gates.sensitive_raw_review.approval_required;
+    let execution_gate = gates.execution_model_input_review.approval_required
+        || gates.execution_command_review.approval_required;
+    let unsupported_surface = coverage_has_insufficient_surface(coverage);
+    let insufficient_coverage = !coverage.limit_reason_codes.is_empty() || unsupported_surface;
+    let reason_codes = reason_codes(
+        findings.findings.len() as u64,
+        sensitive_gate,
+        execution_gate,
+        slices_over_token_limit,
+        insufficient_coverage,
+        &coverage.limit_reason_codes,
+        unsupported_surface,
+        dirty_unknown,
+    );
+
     ReviewArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
         verdict: verdict(
             findings.findings.len() as u64,
-            gates.sensitive_raw_review.approval_required,
-            gates.execution_review.approval_required,
+            sensitive_gate,
+            execution_gate,
+            insufficient_coverage,
         ),
+        safe_claim_made: false,
+        may_user_run_install: false,
+        may_agent_request_run_approval: true,
+        may_agent_run_without_user: false,
+        reason_codes,
         counts: ReviewCounts {
             findings_total: findings.findings.len() as u64,
             high_priority_findings,
@@ -79,14 +104,68 @@ pub fn build(
     }
 }
 
-fn verdict(findings: u64, sensitive_gate: bool, execution_gate: bool) -> String {
-    if sensitive_gate || execution_gate {
+fn verdict(
+    findings: u64,
+    sensitive_gate: bool,
+    execution_gate: bool,
+    insufficient_coverage: bool,
+) -> String {
+    if insufficient_coverage {
+        "insufficient-coverage".into()
+    } else if sensitive_gate || execution_gate {
         "approval-required".into()
     } else if findings > 0 {
         "review-required".into()
     } else {
-        "no-findings-within-observed-scope".into()
+        "no-blocker-observed".into()
     }
+}
+
+fn reason_codes(
+    findings: u64,
+    sensitive_gate: bool,
+    execution_gate: bool,
+    slices_over_token_limit: u64,
+    insufficient_coverage: bool,
+    limit_reason_codes: &[String],
+    unsupported_surface: bool,
+    dirty_unknown: bool,
+) -> Vec<String> {
+    let mut codes = Vec::new();
+    if insufficient_coverage {
+        codes.extend(limit_reason_codes.iter().cloned());
+    }
+    if unsupported_surface {
+        codes.push("unsupported-surface-name-detected".into());
+    }
+    if sensitive_gate {
+        codes.push("sensitive-candidates-present".into());
+    }
+    if execution_gate {
+        codes.push("execution-candidates-present".into());
+    }
+    if slices_over_token_limit > 0 {
+        codes.push("slice-token-limit-exceeded".into());
+    }
+    if findings > 0 {
+        codes.push("findings-present".into());
+    }
+    if dirty_unknown {
+        codes.push("source-dirty-unknown".into());
+    }
+    if codes.is_empty() {
+        codes.push("observed-scope-no-blocker".into());
+    }
+    codes.sort();
+    codes.dedup();
+    codes
+}
+
+fn coverage_has_insufficient_surface(coverage: &CoverageArtifact) -> bool {
+    coverage
+        .capabilities
+        .iter()
+        .any(|capability| capability.verdict_effect.as_deref() == Some("insufficient-coverage"))
 }
 
 fn required_actions(gates: &GateArtifact, slices_over_token_limit: u64) -> Vec<ReviewAction> {
@@ -99,11 +178,18 @@ fn required_actions(gates: &GateArtifact, slices_over_token_limit: u64) -> Vec<R
             acknowledgements: gates.sensitive_raw_review.acknowledgements.clone(),
         },
         ReviewAction {
-            id: "execution-review".into(),
-            required: gates.execution_review.approval_required,
-            reason: gates.execution_review.message.clone(),
-            paths: gates.execution_review.paths.clone(),
-            acknowledgements: gates.execution_review.acknowledgements.clone(),
+            id: "execution-model-input-review".into(),
+            required: gates.execution_model_input_review.approval_required,
+            reason: gates.execution_model_input_review.message.clone(),
+            paths: gates.execution_model_input_review.paths.clone(),
+            acknowledgements: gates.execution_model_input_review.acknowledgements.clone(),
+        },
+        ReviewAction {
+            id: "execution-command-review".into(),
+            required: gates.execution_command_review.approval_required,
+            reason: gates.execution_command_review.message.clone(),
+            paths: Vec::new(),
+            acknowledgements: gates.execution_command_review.acknowledgements.clone(),
         },
         ReviewAction {
             id: "oversized-slice-review".into(),
@@ -126,6 +212,11 @@ pub fn build_security(
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
         verdict: review.verdict.clone(),
+        safe_claim_made: review.safe_claim_made,
+        may_user_run_install: review.may_user_run_install,
+        may_agent_request_run_approval: review.may_agent_request_run_approval,
+        may_agent_run_without_user: review.may_agent_run_without_user,
+        reason_codes: review.reason_codes.clone(),
         action_required: review.required_actions.iter().any(|action| action.required),
         no_exec: NO_EXEC_SENTENCE.into(),
         counts: review.counts.clone(),

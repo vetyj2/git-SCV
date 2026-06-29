@@ -7,11 +7,18 @@ use std::collections::BTreeMap;
 pub const SCHEMA_VERSION: &str = "1";
 
 /// 0804 — report.md 와 V05 가 그대로 비교하는 무실행 고정 문장.
-pub const NO_EXEC_SENTENCE: &str =
-    "이 검사는 대상 저장소의 어떤 명령, 스크립트, 훅도 실행하지 않았다.";
+pub const NO_EXEC_SENTENCE: &str = "이 검사는 대상 저장소의 명령, 스크립트, 훅, 바이너리, 빌드, 테스트, 워크플로, 패키지 매니저, 컨테이너를 실행하지 않았다.";
 
 /// 0805 / V06 — 낮은 확신 고정 문장.
 pub const LOW_CONFIDENCE_SENTENCE: &str = "이 검사는 증거가 충분하지 않아 낮은 확신의 결과다.";
+
+pub const LOCAL_MAX_ENTRIES: u64 = 200_000;
+pub const LOCAL_MAX_DEPTH: u64 = 64;
+pub const LOCAL_MAX_PATH_BYTES: u64 = 4096;
+pub const LOCAL_MAX_READ_BYTES_PER_MANIFEST: u64 = 1_048_576;
+pub const LOCAL_MAX_TOTAL_READ_BYTES: u64 = 52_428_800;
+pub const LOCAL_MAX_REPORTED_FINDINGS_PER_RULE: u64 = 1000;
+pub const LOCAL_MAX_SYMLINKS: u64 = 1000;
 
 // ---------------------------------------------------------------- run.json
 
@@ -44,17 +51,55 @@ pub enum RunStatus {
     Invalid,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct RunCommand {
+    pub program: String,
+    pub subcommand: String,
+    pub args_redacted: Vec<String>,
+    pub raw_args_stored: bool,
+}
+
 #[derive(Serialize, Debug)]
 pub struct RunArtifact {
     pub schema_version: String,
     pub run_id: String,
     pub tool: ToolInfo,
-    pub command: Vec<String>,
+    pub command: RunCommand,
     pub started_at: String,
     pub finished_at: String,
     pub status: RunStatus,
     pub stages: Vec<StageRecord>,
     pub exit_code: i32,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ManifestArtifactEntry {
+    pub name: String,
+    pub sha256: String,
+    pub required: bool,
+    pub validated: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ManifestValidation {
+    pub schema_validation_passed: bool,
+    pub artifact_leak_scan_passed: bool,
+    pub post_write_verify_passed: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ArtifactManifest {
+    pub artifact_kind: String,
+    pub schema_version: String,
+    pub contract_version: String,
+    pub producer: ToolInfo,
+    pub min_reader_version: String,
+    pub run_id: String,
+    pub source_fingerprint_hash: String,
+    pub redaction_policy_version: String,
+    pub path_privacy_policy: String,
+    pub artifacts: Vec<ManifestArtifactEntry>,
+    pub validation: ManifestValidation,
 }
 
 // ------------------------------------------------------------- source.json
@@ -88,6 +133,63 @@ pub struct SnapshotInfo {
     pub sha256: String,
     pub archive_format: String,
     pub extracted_path: String,
+    pub archive_limits: ArchiveLimits,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ArchiveLimits {
+    pub download_limit_bytes: u64,
+    pub max_entries: u64,
+    pub max_decompressed_bytes: u64,
+    pub max_path_bytes: u64,
+    pub max_depth: u64,
+    pub symlinks_allowed: bool,
+    pub hardlinks_allowed: bool,
+    pub devices_allowed: bool,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+#[value(rename_all = "kebab-case")]
+pub enum PathPrivacyMode {
+    RepoRelative,
+    RedactedAbsolute,
+    Absolute,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PathPrivacy {
+    pub mode: PathPrivacyMode,
+    pub absolute_paths_stored: bool,
+    pub home_dir_redacted: bool,
+    pub repo_root_alias: String,
+}
+
+impl PathPrivacy {
+    pub fn new(mode: PathPrivacyMode) -> Self {
+        Self {
+            mode,
+            absolute_paths_stored: mode == PathPrivacyMode::Absolute,
+            home_dir_redacted: mode != PathPrivacyMode::Absolute,
+            repo_root_alias: "<repo-root>".into(),
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SourceFingerprint {
+    pub kind: String,
+    pub git_commit: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub git_untracked_policy: String,
+    pub inventory_hash: String,
+    pub non_sensitive_content_hash: String,
+    pub sensitive_metadata_hash: String,
+    pub raw_sensitive_content_hashed: bool,
+    pub symlinks_followed: bool,
+    pub created_at: String,
+    pub fingerprint_hash: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -98,6 +200,8 @@ pub struct SourceArtifact {
     pub resolved_path: String,
     pub git: Option<GitInfo>,
     pub snapshot: Option<SnapshotInfo>,
+    pub path_privacy: PathPrivacy,
+    pub source_fingerprint: Option<SourceFingerprint>,
 }
 
 // ---------------------------------------------------------- inventory.json
@@ -156,10 +260,33 @@ impl Default for Policy {
     }
 }
 
-#[derive(Serialize, Clone, Default, Debug)]
+#[derive(Serialize, Clone, Debug)]
 pub struct Limits {
-    pub max_files: Option<u64>,               // 9003 확정: 항상 None
-    pub max_read_bytes_per_file: Option<u64>, // 9003 확정: 항상 None
+    pub max_entries: u64,
+    pub max_depth: u64,
+    pub max_path_bytes: u64,
+    pub max_read_bytes_per_manifest: u64,
+    pub max_total_read_bytes: u64,
+    pub max_reported_findings_per_rule: u64,
+    pub max_symlinks: u64,
+    pub truncation_recorded: bool,
+    pub exceeded_reason_codes: Vec<String>,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            max_entries: LOCAL_MAX_ENTRIES,
+            max_depth: LOCAL_MAX_DEPTH,
+            max_path_bytes: LOCAL_MAX_PATH_BYTES,
+            max_read_bytes_per_manifest: LOCAL_MAX_READ_BYTES_PER_MANIFEST,
+            max_total_read_bytes: LOCAL_MAX_TOTAL_READ_BYTES,
+            max_reported_findings_per_rule: LOCAL_MAX_REPORTED_FINDINGS_PER_RULE,
+            max_symlinks: LOCAL_MAX_SYMLINKS,
+            truncation_recorded: false,
+            exceeded_reason_codes: Vec::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -202,6 +329,10 @@ pub struct SkipReasons {
 pub struct CoverageArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub local_limits: Limits,
+    pub limit_reason_codes: Vec<String>,
+    pub capabilities: Vec<SurfaceCapability>,
+    pub prompt_injection_surfaces: Vec<PromptInjectionSurface>,
     pub files_discovered: u64,
     pub files_read: u64,
     pub files_skipped: u64,
@@ -209,6 +340,23 @@ pub struct CoverageArtifact {
     pub read_files: Vec<ReadFile>,
     pub skip_reasons: SkipReasons,
     pub confidence_note: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SurfaceCapability {
+    pub surface: String,
+    pub support: String,
+    pub signals: Vec<String>,
+    pub raw_values_stored: bool,
+    pub verdict_effect: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PromptInjectionSurface {
+    pub path: String,
+    pub default_model_input: String,
+    pub agent_must_not_obey: bool,
+    pub reason: String,
 }
 
 // ----------------------------------------------------------- evidence.json
@@ -236,9 +384,15 @@ pub struct Evidence {
     pub id: String,
     pub path: String,
     pub kind: EvidenceKind,
+    pub json_pointer: Option<String>,
     pub lines: Option<LineRange>,
     pub summary: String,
-    pub excerpt: Option<String>,
+    pub value_stored: bool,
+    pub redacted_excerpt: Option<String>,
+    pub signal_labels: Vec<String>,
+    pub raw_excerpt_stored: bool,
+    pub redaction_applied: bool,
+    pub redaction_labels: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -354,6 +508,10 @@ pub struct DependencyItem {
     pub name: String,
     pub scope: String,
     pub source_kind: String,
+    pub raw_spec_stored: bool,
+    pub redacted_spec: String,
+    pub spec_hash: String,
+    pub risk_signals: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -452,6 +610,15 @@ pub struct GatePrompt {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct ExecutionCommandGate {
+    pub approval_required: bool,
+    pub message: String,
+    pub requires_exact_command: bool,
+    pub approved_commands: Vec<String>,
+    pub acknowledgements: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct GateItem {
     pub path: String,
     pub rule: String,
@@ -459,11 +626,23 @@ pub struct GateItem {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct GateDecisionBinding {
+    pub requires_source_fingerprint_hash: bool,
+    pub requires_artifact_manifest_sha256: bool,
+    pub expires_on_source_change: bool,
+    pub expires_on_artifact_manifest_change: bool,
+    pub requires_path_metadata_hash_for_path_approval: bool,
+    pub requires_exact_command_envelope_for_execution: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct GateArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub decision_binding: GateDecisionBinding,
     pub sensitive_raw_review: GatePrompt,
-    pub execution_review: GatePrompt,
+    pub execution_model_input_review: GatePrompt,
+    pub execution_command_review: ExecutionCommandGate,
     pub sensitive_candidates: Vec<GateItem>,
     pub automatic_execution_candidates: Vec<GateItem>,
     pub execution_related_candidates: Vec<GateItem>,
@@ -541,6 +720,11 @@ pub struct ReviewArtifact {
     pub schema_version: String,
     pub run_id: String,
     pub verdict: String,
+    pub safe_claim_made: bool,
+    pub may_user_run_install: bool,
+    pub may_agent_request_run_approval: bool,
+    pub may_agent_run_without_user: bool,
+    pub reason_codes: Vec<String>,
     pub counts: ReviewCounts,
     pub required_actions: Vec<ReviewAction>,
     pub default_model_excluded_paths: Vec<String>,
@@ -554,6 +738,11 @@ pub struct SecurityArtifact {
     pub schema_version: String,
     pub run_id: String,
     pub verdict: String,
+    pub safe_claim_made: bool,
+    pub may_user_run_install: bool,
+    pub may_agent_request_run_approval: bool,
+    pub may_agent_run_without_user: bool,
+    pub reason_codes: Vec<String>,
     pub action_required: bool,
     pub no_exec: String,
     pub counts: ReviewCounts,
@@ -562,6 +751,198 @@ pub struct SecurityArtifact {
     pub limitations: Vec<String>,
     pub references: Vec<String>,
     pub note: String,
+}
+
+// --------------------------------------------------------------- brief.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct BriefArtifact {
+    pub artifact_kind: String,
+    pub schema_version: String,
+    pub run_id: String,
+    pub artifact_manifest_sha256: String,
+    pub source_fingerprint_hash: String,
+    pub verdict: String,
+    pub safe_claim_made: bool,
+    pub may_user_run_install: bool,
+    pub may_agent_request_run_approval: bool,
+    pub may_agent_run_without_user: bool,
+    pub action_required: bool,
+    pub counts: ReviewCounts,
+    pub required_actions: Vec<String>,
+    pub reason_codes: Vec<String>,
+    pub next_step_blocked_until: Vec<String>,
+    pub no_exec_statement: String,
+}
+
+// ------------------------------------------------------- agent_receipt.json
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+#[value(rename_all = "kebab-case")]
+pub enum ReceiptNextAction {
+    None,
+    AskUserApproval,
+    InspectSlice,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AgentReceipt {
+    pub artifact_kind: String,
+    pub schema_version: String,
+    pub receipt_id: String,
+    pub agent: String,
+    pub run_id: String,
+    pub artifact_manifest_sha256: String,
+    pub source_fingerprint_hash: String,
+    pub read_artifacts: Vec<String>,
+    pub summarized_to_user: bool,
+    pub blocked_actions_acknowledged: bool,
+    pub next_action_requested: ReceiptNextAction,
+    pub summary_file_sha256: String,
+    pub summary_text_stored: bool,
+    pub receipt_text: String,
+}
+
+// ----------------------------------------------------- connection_graph.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GraphNode {
+    pub id: String,
+    pub kind: String,
+    pub path: Option<String>,
+    pub default_model_input: Option<bool>,
+    pub requires_execution_review: bool,
+    pub requires_user_approval: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GraphEdge {
+    pub from: String,
+    pub to: String,
+    pub kind: String,
+    pub execution_condition: Option<String>,
+    pub approval_gate: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ReachabilityScenario {
+    pub scenario_id: String,
+    pub user_action: String,
+    pub reachable_nodes: Vec<String>,
+    pub blocked_by: Vec<String>,
+    pub safe_to_execute_without_user: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ConnectionGraphArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+    pub scenarios: Vec<ReachabilityScenario>,
+}
+
+// ---------------------------------------------------------- analysis_plan.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisUnit {
+    pub unit_id: String,
+    pub kind: String,
+    pub allowed_paths: Vec<String>,
+    pub forbidden_paths: Vec<String>,
+    pub questions: Vec<String>,
+    pub depends_on_units: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct CrossUnitTask {
+    pub task_id: String,
+    pub kind: String,
+    pub input_units: Vec<String>,
+    pub questions: Vec<String>,
+    pub required_outputs: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisPlanArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub units: Vec<AnalysisUnit>,
+    pub cross_unit_tasks: Vec<CrossUnitTask>,
+}
+
+// ------------------------------------------------------ synthesis artifacts
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AggregatePath {
+    pub scenario: String,
+    pub reachable_nodes: Vec<String>,
+    pub blocked_by_gates: Vec<String>,
+    pub risk_summary: String,
+    pub safe_to_execute_without_user: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SynergyFinding {
+    pub id: String,
+    pub kind: String,
+    pub summary: String,
+    pub requires_followup: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct CrossUnitAnalysisArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub input_units: Vec<String>,
+    pub aggregate_paths: Vec<AggregatePath>,
+    pub synergy_findings: Vec<SynergyFinding>,
+    pub conflicts: Vec<String>,
+    pub unresolved_edges: Vec<String>,
+    pub followup_required: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AggregateSafetyDiagnosis {
+    pub no_blocker_observed_within_scope: bool,
+    pub blocked_execution_surfaces: Vec<String>,
+    pub insufficient_coverage_reasons: Vec<String>,
+    pub what_cannot_be_concluded: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SynthesisArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub verdict: String,
+    pub safe_claim_made: bool,
+    pub unit_analyses_complete: bool,
+    pub cross_unit_analysis_complete: String,
+    pub source_fingerprint_verified: bool,
+    pub unresolved_edges_count: u64,
+    pub conflicts_count: u64,
+    pub required_user_actions: Vec<String>,
+    pub aggregate_safety_diagnosis: AggregateSafetyDiagnosis,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct FollowupItem {
+    pub followup_id: String,
+    pub kind: String,
+    pub needed_artifacts: Vec<String>,
+    pub needed_user_approval: Option<String>,
+    pub question: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct FollowupPlanArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub round: u64,
+    pub reason: String,
+    pub required_followups: Vec<FollowupItem>,
+    pub blocked_until: Vec<String>,
 }
 
 // ------------------------------------------------- 감지 단계의 중간 데이터
@@ -583,6 +964,7 @@ pub enum RuleId {
     D11,
     D12,
     D13,
+    D14,
 }
 
 #[derive(Clone, Debug)]
@@ -603,6 +985,7 @@ pub struct DetectOutcome {
     pub read_files: Vec<ReadFile>,
     pub binary_skips: u64,
     pub dependency_manifests: Vec<DependencyManifest>,
+    pub limit_reason_codes: Vec<String>,
     /// 예: package.json 파싱 실패 문장 (사양 0500 2절).
     pub limitations: Vec<String>,
 }
@@ -614,7 +997,7 @@ pub struct RunData {
     pub run_id: String,
     pub started_at: String,
     pub finished_at: String,
-    pub command: Vec<String>,
+    pub command: RunCommand,
     pub source: SourceArtifact,
     pub inventory: InventoryArtifact,
     pub coverage: CoverageArtifact,
@@ -627,5 +1010,10 @@ pub struct RunData {
     pub slices: SliceArtifact,
     pub review: ReviewArtifact,
     pub security: SecurityArtifact,
+    pub connection_graph: ConnectionGraphArtifact,
+    pub analysis_plan: AnalysisPlanArtifact,
+    pub cross_unit_analysis: CrossUnitAnalysisArtifact,
+    pub synthesis: SynthesisArtifact,
+    pub followup_plan: FollowupPlanArtifact,
     pub report_md: String,
 }

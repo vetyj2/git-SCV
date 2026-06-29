@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV followup plan", "type": "object", "required": ["round", "reason", "required_followups", "blocked_until"], "properties": { "round": { "type": "integer", "minimum": 1 }, "reason": { "type": "string" }, "required_followups": { "type": "array" }, "blocked_until": { "type": "array" } } }

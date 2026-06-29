@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV slices", "type": "object", "required": ["schema_version", "run_id", "policy", "slices"], "properties": { "schema_version": { "type": "string" }, "run_id": { "type": "string" }, "policy": { "type": "object" }, "slices": { "type": "array" } } }

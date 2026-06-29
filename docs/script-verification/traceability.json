@@ -1,0 +1,107 @@
+{
+  "artifact_kind": "script_traceability",
+  "schema_version": "1",
+  "checklist": "docs/script-verification/checklist.json",
+  "inventory": "docs/script-verification/script_inventory.json",
+  "module_checks": [
+    {
+      "module_id": "M01-BOOTSTRAP-DISPATCH",
+      "script_path": "scripts/git-scv-hermes.sh",
+      "stage": "SV2/SV3/SV4",
+      "check_ids": [
+        "REQ-0100-CLI-INPUT-ERROR",
+        "REQ-SECURITY-NO-SAFE-CLAIM",
+        "UI-NO-LEAK-OUTPUT",
+        "UI-FAILURE-REDACTION",
+        "P0629-P0-FAILURE-PATH-REDACTION",
+        "P0629-P15-PROMPT-INJECTION-UNTRUSTED"
+      ]
+    },
+    {
+      "module_id": "M02-CASE-PACKAGE",
+      "script_path": "scripts/git-scv-hermes.sh",
+      "stage": "SV2/SV3/SV4",
+      "check_ids": [
+        "REQ-0900-ARTIFACT-CONTRACT",
+        "REQ-CASE-PACKAGE-SAFETY",
+        "REQ-SUPPORTED-SURFACE-LIMITS",
+        "UI-CLEANUP-SCOPE",
+        "UI-NO-LEAK-OUTPUT",
+        "UI-GATE-BINDING-NOT-BYPASSED",
+        "P0629-P0-NO-LEAK-CONTRACT",
+        "P0629-P1-SOURCE-GATE-BINDING",
+        "P0629-P3P4-SYNTHESIS-NOT-BYPASSED"
+      ]
+    },
+    {
+      "module_id": "M03-INSTALL-UPDATE",
+      "script_path": "scripts/git-scv-hermes.sh",
+      "stage": "SV2/SV3/SV4",
+      "check_ids": [
+        "REQ-RELEASE-INSTALL-DOCS",
+        "REQ-SECURITY-NO-SAFE-CLAIM",
+        "UI-TARGET-NO-EXEC",
+        "UI-GATE-BINDING-NOT-BYPASSED",
+        "P0629-P5-NO-TARGET-PACKAGE-MANAGER",
+        "P0629-P15-PROMPT-INJECTION-UNTRUSTED"
+      ]
+    },
+    {
+      "module_id": "M04-INSPECT-SNAPSHOT",
+      "script_path": "scripts/git-scv-hermes.sh",
+      "stage": "SV2/SV3/SV4",
+      "check_ids": [
+        "REQ-0100-CLI-INPUT-ERROR",
+        "REQ-0200-FLOW-NO-BYPASS",
+        "REQ-0900-ARTIFACT-CONTRACT",
+        "UI-BRIEF-FIRST",
+        "UI-TARGET-NO-EXEC",
+        "UI-NO-LEAK-OUTPUT",
+        "UI-SOURCE-VERIFY-NO-EXECUTION-PATH",
+        "P0629-P0-NO-LEAK-CONTRACT",
+        "P0629-P1-BRIEF-GATE-RECEIPT",
+        "P0629-P5-NO-TARGET-PACKAGE-MANAGER"
+      ]
+    },
+    {
+      "module_id": "M05-BRIEF-ARTIFACTS",
+      "script_path": "scripts/git-scv-hermes.sh",
+      "stage": "SV2/SV3/SV4",
+      "check_ids": [
+        "REQ-0900-ARTIFACT-CONTRACT",
+        "REQ-APPROVAL-GATES",
+        "REQ-SUPPORTED-SURFACE-LIMITS",
+        "UI-BRIEF-FIRST",
+        "UI-SOURCE-VERIFY-NO-EXECUTION-PATH",
+        "UI-GATE-BINDING-NOT-BYPASSED",
+        "P0629-P1-BRIEF-GATE-RECEIPT",
+        "P0629-P1-SOURCE-GATE-BINDING",
+        "P0629-P3P4-SYNTHESIS-NOT-BYPASSED"
+      ]
+    },
+    {
+      "module_id": "M06-CLEANUP-SAFETY",
+      "script_path": "scripts/git-scv-hermes.sh",
+      "stage": "SV2/SV3/SV4",
+      "check_ids": [
+        "REQ-0100-CLI-INPUT-ERROR",
+        "REQ-CASE-PACKAGE-SAFETY",
+        "UI-CLEANUP-SCOPE",
+        "UI-EXPLICIT-DELETION-ACK",
+        "UI-FAILURE-REDACTION",
+        "P0629-P1-CASE-DELETE-SAFETY",
+        "P0629-P0-FAILURE-PATH-REDACTION"
+      ]
+    }
+  ],
+  "final_verification": {
+    "stage": "SV6",
+    "description": "Final meta-check proving that the script inventory, module traceability, and checklist coverage are complete.",
+    "check_ids": [
+      "META-INVENTORY-COMPLETE",
+      "META-TRACEABILITY-COMPLETE",
+      "META-MECHANICAL-TESTS",
+      "META-FINAL-COVERAGE"
+    ]
+  }
+}

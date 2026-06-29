@@ -102,7 +102,7 @@ fn suggested_read_order(inventory: &InventoryArtifact, detections: &[Detection])
         &mut order,
         &mut seen,
         detections,
-        &[RuleId::D01, RuleId::D03, RuleId::D04],
+        &[RuleId::D01, RuleId::D03, RuleId::D04, RuleId::D14],
         &file_paths,
     );
     push_detection_paths(

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git-scv.invalid/schemas/agent_receipt.schema.json",
+  "title": "Git-SCV agent receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "receipt_id",
+    "agent",
+    "run_id",
+    "artifact_manifest_sha256",
+    "source_fingerprint_hash",
+    "read_artifacts",
+    "summarized_to_user",
+    "blocked_actions_acknowledged",
+    "next_action_requested",
+    "summary_file_sha256",
+    "summary_text_stored",
+    "receipt_text"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "agent_receipt" },
+    "schema_version": { "const": "2" },
+    "receipt_id": { "type": "string", "pattern": "^AR[0-9a-f]{16}$" },
+    "agent": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "artifact_manifest_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_fingerprint_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "read_artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "contains": { "const": "brief.json" },
+      "uniqueItems": true
+    },
+    "summarized_to_user": { "const": true },
+    "blocked_actions_acknowledged": { "const": true },
+    "next_action_requested": {
+      "enum": ["none", "ask-user-approval", "inspect-slice"]
+    },
+    "summary_file_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "summary_text_stored": { "const": false },
+    "receipt_text": { "type": "string", "minLength": 1 }
+  }
+}

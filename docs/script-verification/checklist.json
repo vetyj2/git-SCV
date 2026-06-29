@@ -1,0 +1,287 @@
+{
+  "artifact_kind": "script_verification_checklist",
+  "schema_version": "1",
+  "sources": {
+    "req": [
+      "docs/spec/0100-cli.md",
+      "docs/spec/0200-flow.md",
+      "docs/spec/0900-artifacts.md",
+      "docs/APPROVAL_GATES.md",
+      "docs/CASE_PACKAGES.md",
+      "docs/RELEASE.md",
+      "docs/SECURITY_MODEL.md",
+      "docs/SUPPORTED_SURFACES.md"
+    ],
+    "user_intent": [
+      "Hermes must not skip brief, gates, source verification, or cleanup safety.",
+      "The wrapper must not execute target repository install/build/test/run commands.",
+      "The wrapper must expose artifact paths needed for agent review and synthesis."
+    ],
+    "p0629": [
+      "docs/internal/2026-06-29-improvement-plan.md",
+      "docs/internal/2026-06-29-large-patch-execution-plan.md"
+    ]
+  },
+  "families": [
+    {
+      "family": "REQ",
+      "checks": [
+        {
+          "id": "REQ-0100-CLI-INPUT-ERROR",
+          "description": "Script command entrypoints reject missing or malformed required arguments with explicit errors.",
+          "criteria": [
+            "usage text lists required command shapes",
+            "missing required arguments call die before invoking git-scv"
+          ]
+        },
+        {
+          "id": "REQ-0200-FLOW-NO-BYPASS",
+          "description": "Script flow does not bypass inspect/snapshot artifact generation before briefing.",
+          "criteria": [
+            "inspect creates a case run directory before invoking git-scv inspect",
+            "snapshot creates a case package and then points to snapshot/run",
+            "brief is printed after inspect and snapshot"
+          ]
+        },
+        {
+          "id": "REQ-0900-ARTIFACT-CONTRACT",
+          "description": "Script exposes contract-v2 artifacts needed by agents and humans.",
+          "criteria": [
+            "artifact_manifest.json is visible in case info",
+            "brief.json and brief.md are visible in case info",
+            "review, security, gates, sensitive, and slices artifacts are visible"
+          ]
+        },
+        {
+          "id": "REQ-APPROVAL-GATES",
+          "description": "Script makes gate review artifacts and briefing entrypoints first-class.",
+          "criteria": [
+            "gates.json path is printed",
+            "brief command is printed",
+            "brief subcommand resolves run artifacts from a case directory"
+          ]
+        },
+        {
+          "id": "REQ-CASE-PACKAGE-SAFETY",
+          "description": "Script case packages are created under a configured root and deletion is scoped to that root.",
+          "criteria": [
+            "case root is canonicalized",
+            "new cases contain a harness sentinel",
+            "cleanup refuses paths outside the case root"
+          ]
+        },
+        {
+          "id": "REQ-RELEASE-INSTALL-DOCS",
+          "description": "Install and update commands use the documented cargo install path for Git-SCV itself.",
+          "criteria": [
+            "install supports a pinned commit revision",
+            "update-latest is explicit and separate from pinned install",
+            "uninstall uses cargo uninstall git-scv"
+          ]
+        },
+        {
+          "id": "REQ-SECURITY-NO-SAFE-CLAIM",
+          "description": "Script output does not claim the inspected target is safe, trusted, clean, secure, safe-to-install, or safe-to-run.",
+          "criteria": [
+            "commands describe inspection and briefing, not safety guarantees",
+            "case info points to artifacts for review instead of declaring safety"
+          ]
+        },
+        {
+          "id": "REQ-SUPPORTED-SURFACE-LIMITS",
+          "description": "Script exposes coverage, graph, synthesis, and follow-up artifacts so unsupported surfaces and unresolved edges remain visible.",
+          "criteria": [
+            "connection_graph.json is visible",
+            "analysis_plan.json is visible",
+            "cross_unit_analysis.json, synthesis.json, and followup_plan.json are visible"
+          ]
+        }
+      ]
+    },
+    {
+      "family": "UI",
+      "checks": [
+        {
+          "id": "UI-TARGET-NO-EXEC",
+          "description": "The wrapper never runs target repository install/build/test/run commands.",
+          "criteria": [
+            "script does not invoke npm install, pip install, docker build, docker run, brew install, or curl pipe shell patterns",
+            "cargo install is only used for Git-SCV installation"
+          ]
+        },
+        {
+          "id": "UI-BRIEF-FIRST",
+          "description": "A case-producing command prints the mandatory brief before any next action.",
+          "criteria": [
+            "inspect calls git-scv brief after printing case info",
+            "snapshot calls git-scv brief after printing case info",
+            "brief command is listed as mandatory"
+          ]
+        },
+        {
+          "id": "UI-NO-LEAK-OUTPUT",
+          "description": "Script-level output avoids raw target command execution details and points to redacted artifacts instead.",
+          "criteria": [
+            "case info prints artifact paths",
+            "script does not echo raw package script values",
+            "error paths are emitted through die"
+          ]
+        },
+        {
+          "id": "UI-SOURCE-VERIFY-NO-EXECUTION-PATH",
+          "description": "Script does not present execution as available without source-bound review artifacts.",
+          "criteria": [
+            "artifact_manifest.json and brief.json are exposed",
+            "script has no run/install target command helper"
+          ]
+        },
+        {
+          "id": "UI-GATE-BINDING-NOT-BYPASSED",
+          "description": "Gate-related artifacts remain visible before any approval discussion.",
+          "criteria": [
+            "gates.json path is printed",
+            "brief output is printed",
+            "connection graph and synthesis paths are visible"
+          ]
+        },
+        {
+          "id": "UI-CLEANUP-SCOPE",
+          "description": "Cleanup is limited to harness case packages and cannot delete arbitrary source paths.",
+          "criteria": [
+            "cleanup canonicalizes the requested target",
+            "cleanup refuses paths outside case root",
+            "cleanup refuses the case root itself"
+          ]
+        },
+        {
+          "id": "UI-EXPLICIT-DELETION-ACK",
+          "description": "Destructive cleanup commands require exact acknowledgement phrases.",
+          "criteria": [
+            "single cleanup requires --ack delete-git-scv-case",
+            "cleanup-all requires --ack delete-all-git-scv-cases",
+            "main dispatch passes cleanup-all arguments through"
+          ]
+        },
+        {
+          "id": "UI-FAILURE-REDACTION",
+          "description": "Failures are reported through stable harness error messages instead of uncontrolled command output.",
+          "criteria": [
+            "die writes a single error line to stderr",
+            "argument validation occurs before git-scv commands",
+            "script avoids shell eval"
+          ]
+        }
+      ]
+    },
+    {
+      "family": "P0629",
+      "checks": [
+        {
+          "id": "P0629-P0-NO-LEAK-CONTRACT",
+          "description": "The script aligns with artifact no-leak and contract-v2 usage by surfacing artifact paths rather than raw evidence.",
+          "criteria": [
+            "artifact_manifest.json is surfaced",
+            "brief and report artifacts are surfaced",
+            "raw target command bodies are not printed"
+          ]
+        },
+        {
+          "id": "P0629-P0-FAILURE-PATH-REDACTION",
+          "description": "Script failure paths are narrow and do not concatenate untrusted target command bodies.",
+          "criteria": [
+            "die is the common error path",
+            "unsupported command falls back to usage and die",
+            "no eval is used"
+          ]
+        },
+        {
+          "id": "P0629-P1-BRIEF-GATE-RECEIPT",
+          "description": "Brief and gate review are promoted before agent next actions.",
+          "criteria": [
+            "brief command is first-class",
+            "gates.json and brief artifacts are visible",
+            "case-producing commands print git-scv brief"
+          ]
+        },
+        {
+          "id": "P0629-P1-CASE-DELETE-SAFETY",
+          "description": "Cleanup follows case package deletion safety requirements.",
+          "criteria": [
+            "delete requires exact ack",
+            "delete is confined to case root",
+            "delete requires harness sentinel"
+          ]
+        },
+        {
+          "id": "P0629-P1-SOURCE-GATE-BINDING",
+          "description": "Source and gate binding artifacts are made visible to the agent.",
+          "criteria": [
+            "artifact manifest and brief paths are printed",
+            "review, security, and gates artifacts are printed",
+            "brief is available as a command"
+          ]
+        },
+        {
+          "id": "P0629-P15-PROMPT-INJECTION-UNTRUSTED",
+          "description": "The script does not treat target repository instruction files as operator instructions.",
+          "criteria": [
+            "script accepts only explicit CLI arguments",
+            "script does not source files from the target repository",
+            "script does not eval target content"
+          ]
+        },
+        {
+          "id": "P0629-P3P4-SYNTHESIS-NOT-BYPASSED",
+          "description": "Graph, analysis plan, cross-unit synthesis, synthesis, and follow-up artifacts are visible.",
+          "criteria": [
+            "connection_graph.json is printed",
+            "analysis_plan.json is printed",
+            "cross_unit_analysis.json, synthesis.json, and followup_plan.json are printed"
+          ]
+        },
+        {
+          "id": "P0629-P5-NO-TARGET-PACKAGE-MANAGER",
+          "description": "Package-manager and download-path expansion remains no-exec from the target repository perspective.",
+          "criteria": [
+            "script does not run target package managers",
+            "script does not run target containers",
+            "snapshot delegates to git-scv snapshot with checksum"
+          ]
+        }
+      ]
+    },
+    {
+      "family": "META",
+      "checks": [
+        {
+          "id": "META-INVENTORY-COMPLETE",
+          "description": "Every file under scripts/ appears in the script inventory.",
+          "criteria": [
+            "mechanical test compares filesystem scripts to inventory scripts"
+          ]
+        },
+        {
+          "id": "META-TRACEABILITY-COMPLETE",
+          "description": "Every inventory module has a traceability entry.",
+          "criteria": [
+            "mechanical test compares inventory module IDs to traceability module IDs"
+          ]
+        },
+        {
+          "id": "META-MECHANICAL-TESTS",
+          "description": "Mechanical tests validate checklist IDs, script contract strings, and no target package-manager execution patterns.",
+          "criteria": [
+            "tests/script_contract.rs parses all script verification JSON files"
+          ]
+        },
+        {
+          "id": "META-FINAL-COVERAGE",
+          "description": "The final stage verifies that every checklist item is covered.",
+          "criteria": [
+            "mechanical test fails if any checklist item is uncovered"
+          ]
+        }
+      ]
+    }
+  ]
+}

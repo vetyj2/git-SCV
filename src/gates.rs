@@ -5,7 +5,8 @@
 
 use crate::cli::{SENSITIVE_RAW_ACK, SENSITIVE_REVIEW_ACK};
 use crate::model::{
-    Detection, GateArtifact, GateItem, GatePrompt, RuleId, SensitiveArtifact, SCHEMA_VERSION,
+    Detection, ExecutionCommandGate, GateArtifact, GateDecisionBinding, GateItem, GatePrompt,
+    RuleId, SensitiveArtifact, SCHEMA_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -39,17 +40,32 @@ pub fn build(
     GateArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        decision_binding: GateDecisionBinding {
+            requires_source_fingerprint_hash: true,
+            requires_artifact_manifest_sha256: true,
+            expires_on_source_change: true,
+            expires_on_artifact_manifest_change: true,
+            requires_path_metadata_hash_for_path_approval: true,
+            requires_exact_command_envelope_for_execution: true,
+        },
         sensitive_raw_review: GatePrompt {
             approval_required: !sensitive_paths.is_empty(),
             message: "민감 후보 원문을 모델 입력 또는 진단 입력에 포함하려면 --approve-sensitive-review, --sensitive-review-ack review-sensitive-candidates, --approve-sensitive-raw, --sensitive-raw-ack include-approved-sensitive-raw-in-diagnostic-input, 경로별 --sensitive-path 승인이 모두 필요하다. 승인 질문에는 paths 목록을 그대로 보여준다.".into(),
             paths: sensitive_paths,
             acknowledgements: vec![SENSITIVE_REVIEW_ACK.into(), SENSITIVE_RAW_ACK.into()],
         },
-        execution_review: GatePrompt {
+        execution_model_input_review: GatePrompt {
             approval_required: !execution_paths.is_empty(),
-            message: "모델 입력, 설치, 빌드, 테스트, 실행, 훅, 컨테이너 명령 전에 자동 실행 후보와 실행 관련 후보 paths 목록을 사용자에게 제시하고 별도 승인을 받아야 한다.".into(),
-            paths: execution_paths,
-            acknowledgements: Vec::new(),
+            message: "자동 실행 후보와 실행 관련 후보를 모델 입력에 포함하기 전에 paths 목록을 사용자에게 제시하고 별도 승인을 받아야 한다.".into(),
+            paths: execution_paths.clone(),
+            acknowledgements: vec!["review-execution-candidates-before-model-input".into()],
+        },
+        execution_command_review: ExecutionCommandGate {
+            approval_required: !execution_paths.is_empty(),
+            message: "설치, 빌드, 테스트, 실행, 훅, 바이너리, 컨테이너 명령 전에는 exact command envelope와 사용자 승인이 필요하다.".into(),
+            requires_exact_command: true,
+            approved_commands: Vec::new(),
+            acknowledgements: vec!["approve-running-repo-command-after-review".into()],
         },
         sensitive_candidates,
         automatic_execution_candidates,
@@ -112,7 +128,7 @@ fn reason(detection: &Detection) -> String {
         RuleId::D07 => "컨테이너 정의 파일은 빌드나 실행 승인 전에 검토해야 한다.".into(),
         RuleId::D08 => "지속 통합 워크플로는 원격 실행 경로를 만들 수 있다.".into(),
         RuleId::D09 => "셸 스크립트는 직접 실행되거나 자동화에서 호출될 수 있다.".into(),
-        RuleId::D01 | RuleId::D03 | RuleId::D04 | RuleId::D13 => {
+        RuleId::D01 | RuleId::D03 | RuleId::D04 | RuleId::D13 | RuleId::D14 => {
             "승인 게이트 대상 규칙이 아니다.".into()
         }
     }
@@ -133,6 +149,7 @@ fn rule_label(rule: RuleId) -> &'static str {
         RuleId::D11 => "D11",
         RuleId::D12 => "D12",
         RuleId::D13 => "D13",
+        RuleId::D14 => "D14",
     }
 }
 
@@ -151,5 +168,6 @@ fn rule_order(rule: RuleId) -> u8 {
         RuleId::D11 => 11,
         RuleId::D12 => 12,
         RuleId::D13 => 13,
+        RuleId::D14 => 14,
     }
 }

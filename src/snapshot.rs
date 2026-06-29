@@ -2,7 +2,8 @@
 
 use crate::cli::SnapshotArgs;
 use crate::errors::ScvError;
-use crate::model::{SensitiveReviewMode, SnapshotInfo};
+use crate::model::{ArchiveLimits, SensitiveReviewMode, SnapshotInfo};
+use crate::redaction::{redact_url_for_artifact, strip_url_query_fragment};
 use crate::safety;
 use flate2::read::GzDecoder;
 use sha2::{Digest, Sha256};
@@ -15,13 +16,18 @@ use zip::ZipArchive;
 
 /// 초기 원격 스냅샷 다운로드 한도. 이후 CLI 옵션으로 확장할 수 있다.
 pub const SNAPSHOT_DOWNLOAD_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
+pub const SNAPSHOT_MAX_ENTRIES: u64 = 20_000;
+pub const SNAPSHOT_MAX_DECOMPRESSED_BYTES: u64 = 500 * 1024 * 1024;
+pub const SNAPSHOT_MAX_PATH_BYTES: u64 = 4096;
+pub const SNAPSHOT_MAX_DEPTH: u64 = 64;
 const SNAPSHOT_DOWNLOAD_TIMEOUT_SECS: u64 = 30;
 
 pub fn run(args: SnapshotArgs) -> Result<(), ScvError> {
     crate::cli::validate_snapshot(&args)?;
     let expected = args.sha256.as_deref().unwrap_or_default();
     let bytes = download_snapshot_bytes(&args.url)?;
-    finish_downloaded_snapshot(&bytes, expected, &args.url, &args.out)
+    let command = crate::inspect::snapshot_command(&args);
+    finish_downloaded_snapshot(&bytes, expected, &args.url, &args.out, command)
 }
 
 /// 내려받은 바이트의 SHA-256 digest를 소문자 hex로 돌려준다.
@@ -41,6 +47,7 @@ pub fn finish_downloaded_snapshot(
     expected: &str,
     archive_url: &str,
     out: &Path,
+    command: crate::model::RunCommand,
 ) -> Result<(), ScvError> {
     if !sha256_matches(bytes, expected) {
         return usage("오류: snapshot 체크섬이 일치하지 않는다.".into());
@@ -62,8 +69,10 @@ pub fn finish_downloaded_snapshot(
             approve_sensitive_raw: false,
             sensitive_raw_ack: None,
             sensitive_paths: Vec::new(),
+            path_privacy: crate::model::PathPrivacyMode::RepoRelative,
         },
         snapshot,
+        command,
     )
 }
 
@@ -121,12 +130,7 @@ impl ArchiveKind {
 }
 
 fn archive_kind(value: &str) -> Option<ArchiveKind> {
-    let path = value
-        .split_once('#')
-        .map_or(value, |(before_fragment, _)| before_fragment)
-        .split_once('?')
-        .map_or(value, |(before_query, _)| before_query)
-        .to_ascii_lowercase();
+    let path = strip_url_query_fragment(value).to_ascii_lowercase();
     if path.ends_with(".zip") {
         Some(ArchiveKind::Zip)
     } else if path.ends_with(".tar.gz") || path.ends_with(".tgz") {
@@ -153,28 +157,21 @@ fn build_snapshot_info(
         sha256: expected.to_ascii_lowercase(),
         archive_format: archive_kind.label().into(),
         extracted_path: extracted_path.display().to_string(),
+        archive_limits: ArchiveLimits {
+            download_limit_bytes: SNAPSHOT_DOWNLOAD_LIMIT_BYTES,
+            max_entries: SNAPSHOT_MAX_ENTRIES,
+            max_decompressed_bytes: SNAPSHOT_MAX_DECOMPRESSED_BYTES,
+            max_path_bytes: SNAPSHOT_MAX_PATH_BYTES,
+            max_depth: SNAPSHOT_MAX_DEPTH,
+            symlinks_allowed: false,
+            hardlinks_allowed: false,
+            devices_allowed: false,
+        },
     })
 }
 
 fn snapshot_metadata_url(value: &str) -> String {
-    let without_fragment = value
-        .split_once('#')
-        .map_or(value, |(before_fragment, _)| before_fragment);
-    let without_query = without_fragment
-        .split_once('?')
-        .map_or(without_fragment, |(before_query, _)| before_query);
-    redact_url_userinfo(without_query).unwrap_or_else(|| without_query.into())
-}
-
-fn redact_url_userinfo(value: &str) -> Option<String> {
-    let (scheme, after_scheme) = value.split_once("://")?;
-    let authority_start = scheme.len() + "://".len();
-    let path_start = after_scheme
-        .find('/')
-        .map_or(value.len(), |offset| authority_start + offset);
-    let authority = &value[authority_start..path_start];
-    let (_userinfo, host) = authority.rsplit_once('@')?;
-    Some(format!("{}://***@{}{}", scheme, host, &value[path_start..]))
+    redact_url_for_artifact(value).into_string()
 }
 
 fn extract_zip(bytes: &[u8], out: &Path) -> Result<(), ScvError> {
@@ -200,11 +197,20 @@ fn extract_zip(bytes: &[u8], out: &Path) -> Result<(), ScvError> {
 fn validate_zip(bytes: &[u8]) -> Result<(), ScvError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes))
         .map_err(|_err| usage_error("오류: snapshot zip 압축을 읽을 수 없다.".into()))?;
+    if archive.len() as u64 > SNAPSHOT_MAX_ENTRIES {
+        return usage("오류: snapshot 압축 항목 수 한도를 초과했다.".into());
+    }
+    let mut total_decompressed = 0_u64;
     for index in 0..archive.len() {
         let file = archive
             .by_index(index)
             .map_err(|_err| usage_error("오류: snapshot zip 항목을 읽을 수 없다.".into()))?;
-        let _ = zip_entry_path(&file)?;
+        total_decompressed = total_decompressed.saturating_add(file.size());
+        if total_decompressed > SNAPSHOT_MAX_DECOMPRESSED_BYTES {
+            return usage("오류: snapshot 압축 해제 크기 한도를 초과했다.".into());
+        }
+        let path = zip_entry_path(&file)?;
+        validate_archive_path_limits(&path)?;
     }
     Ok(())
 }
@@ -246,10 +252,31 @@ fn validate_tar_gz(bytes: &[u8]) -> Result<(), ScvError> {
     let entries = archive
         .entries()
         .map_err(|_err| usage_error("오류: snapshot tar 압축을 읽을 수 없다.".into()))?;
+    let mut count = 0_u64;
+    let mut total_decompressed = 0_u64;
     for entry in entries {
         let entry =
             entry.map_err(|_err| usage_error("오류: snapshot tar 항목을 읽을 수 없다.".into()))?;
-        let _ = tar_entry_path(&entry)?;
+        count += 1;
+        if count > SNAPSHOT_MAX_ENTRIES {
+            return usage("오류: snapshot 압축 항목 수 한도를 초과했다.".into());
+        }
+        total_decompressed = total_decompressed.saturating_add(entry.header().size().unwrap_or(0));
+        if total_decompressed > SNAPSHOT_MAX_DECOMPRESSED_BYTES {
+            return usage("오류: snapshot 압축 해제 크기 한도를 초과했다.".into());
+        }
+        let path = tar_entry_path(&entry)?;
+        validate_archive_path_limits(&path)?;
+    }
+    Ok(())
+}
+
+fn validate_archive_path_limits(path: &Path) -> Result<(), ScvError> {
+    if path.to_string_lossy().len() as u64 > SNAPSHOT_MAX_PATH_BYTES {
+        return usage("오류: snapshot 압축 항목 경로 길이 한도를 초과했다.".into());
+    }
+    if path.components().count() as u64 > SNAPSHOT_MAX_DEPTH {
+        return usage("오류: snapshot 압축 항목 깊이 한도를 초과했다.".into());
     }
     Ok(())
 }
@@ -338,7 +365,10 @@ fn hex_lower(bytes: impl AsRef<[u8]>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{finish_downloaded_snapshot, sha256_hex, sha256_matches};
+    use super::{
+        finish_downloaded_snapshot, sha256_hex, sha256_matches, SNAPSHOT_DOWNLOAD_LIMIT_BYTES,
+        SNAPSHOT_MAX_DEPTH,
+    };
     use flate2::write::GzEncoder;
     use flate2::Compression;
     use std::fs;
@@ -368,9 +398,14 @@ mod tests {
     #[test]
     fn checksum_mismatch_rejects_without_creating_output() {
         let out = test_path("checksum-mismatch-output");
-        let err =
-            finish_downloaded_snapshot(b"abc", &"0".repeat(64), "https://example.com/a.zip", &out)
-                .unwrap_err();
+        let err = finish_downloaded_snapshot(
+            b"abc",
+            &"0".repeat(64),
+            "https://example.com/a.zip",
+            &out,
+            test_snapshot_command("https://example.com/a.zip", &out, &"0".repeat(64)),
+        )
+        .unwrap_err();
         assert_eq!(err.exit_code(), 2);
         assert!(
             err.user_message()
@@ -392,8 +427,13 @@ mod tests {
         finish_downloaded_snapshot(
             &bytes,
             &checksum,
-            "https://example.com/a.zip?download-token=value#fragment",
+            "https://example.invalid/a.zip?token=GIT_SCV_FAKE_TOKEN_DO_NOT_USE_123456#frag",
             &out,
+            test_snapshot_command(
+                "https://example.invalid/a.zip?token=GIT_SCV_FAKE_TOKEN_DO_NOT_USE_123456#frag",
+                &out,
+                &checksum,
+            ),
         )
         .unwrap();
         assert_eq!(
@@ -404,21 +444,38 @@ mod tests {
         let source: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(out.join("run/source.json")).unwrap())
                 .unwrap();
-        assert_eq!(source["snapshot"]["url"], "https://example.com/a.zip");
+        assert_eq!(source["snapshot"]["url"], "https://example.invalid/a.zip");
         assert_eq!(source["snapshot"]["sha256"], checksum);
         assert_eq!(source["snapshot"]["archive_format"], "zip");
-        assert!(
-            source["snapshot"]["extracted_path"]
-                .as_str()
-                .unwrap()
-                .ends_with("/source"),
-            "{source}"
+        assert_eq!(
+            source["snapshot"]["archive_limits"]["download_limit_bytes"],
+            SNAPSHOT_DOWNLOAD_LIMIT_BYTES
         );
+        assert_eq!(
+            source["snapshot"]["archive_limits"]["symlinks_allowed"],
+            false
+        );
+        assert_eq!(source["snapshot"]["extracted_path"], "<repo-root>");
+        assert_eq!(source["path_privacy"]["mode"], "repo-relative");
         assert!(
             !fs::read_to_string(out.join("run/source.json"))
                 .unwrap()
-                .contains("download-token"),
+                .contains("GIT_SCV_FAKE_TOKEN_DO_NOT_USE_123456"),
             "snapshot metadata에 URL query 원문을 저장하면 안 된다"
+        );
+        let run: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("run/run.json")).unwrap()).unwrap();
+        assert_eq!(run["command"]["subcommand"], "snapshot");
+        assert_eq!(run["command"]["raw_args_stored"], false);
+        assert_eq!(
+            run["command"]["args_redacted"][0],
+            "<archive-url:redacted-userinfo-query-fragment>"
+        );
+        assert!(
+            !fs::read_to_string(out.join("run/run.json"))
+                .unwrap()
+                .contains("GIT_SCV_FAKE_TOKEN_DO_NOT_USE_123456"),
+            "run.json에 snapshot URL query 원문을 저장하면 안 된다"
         );
     }
 
@@ -427,8 +484,14 @@ mod tests {
         let bytes = tar_gz_bytes("project/src/lib.rs", b"pub fn ok() {}");
         let checksum = sha256_hex(&bytes);
         let out = test_path("tar-gz-output");
-        finish_downloaded_snapshot(&bytes, &checksum, "https://example.com/a.tar.gz", &out)
-            .unwrap();
+        finish_downloaded_snapshot(
+            &bytes,
+            &checksum,
+            "https://example.com/a.tar.gz",
+            &out,
+            test_snapshot_command("https://example.com/a.tar.gz", &out, &checksum),
+        )
+        .unwrap();
         assert_eq!(
             fs::read_to_string(out.join("source/project/src/lib.rs")).unwrap(),
             "pub fn ok() {}"
@@ -441,8 +504,14 @@ mod tests {
         let bytes = zip_bytes("../escape.txt", b"nope");
         let checksum = sha256_hex(&bytes);
         let out = test_path("zip-traversal-output");
-        let err = finish_downloaded_snapshot(&bytes, &checksum, "https://example.com/a.zip", &out)
-            .unwrap_err();
+        let err = finish_downloaded_snapshot(
+            &bytes,
+            &checksum,
+            "https://example.com/a.zip",
+            &out,
+            test_snapshot_command("https://example.com/a.zip", &out, &checksum),
+        )
+        .unwrap_err();
         assert_eq!(err.exit_code(), 2);
         assert!(
             err.user_message()
@@ -461,8 +530,14 @@ mod tests {
         let bytes = malicious_tar_gz_bytes("../escape.txt", b"nope");
         let checksum = sha256_hex(&bytes);
         let out = test_path("tar-traversal-output");
-        let err = finish_downloaded_snapshot(&bytes, &checksum, "https://example.com/a.tgz", &out)
-            .unwrap_err();
+        let err = finish_downloaded_snapshot(
+            &bytes,
+            &checksum,
+            "https://example.com/a.tgz",
+            &out,
+            test_snapshot_command("https://example.com/a.tgz", &out, &checksum),
+        )
+        .unwrap_err();
         assert_eq!(err.exit_code(), 2);
         assert!(
             err.user_message()
@@ -476,6 +551,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn zip_path_depth_limit_rejected_without_creating_output() {
+        let deep_path = (0..(SNAPSHOT_MAX_DEPTH + 1))
+            .map(|idx| format!("d{idx}"))
+            .collect::<Vec<_>>()
+            .join("/");
+        let bytes = zip_bytes(&format!("{deep_path}/file.txt"), b"nope");
+        let checksum = sha256_hex(&bytes);
+        let out = test_path("zip-depth-limit-output");
+        let err = finish_downloaded_snapshot(
+            &bytes,
+            &checksum,
+            "https://example.com/a.zip",
+            &out,
+            test_snapshot_command("https://example.com/a.zip", &out, &checksum),
+        )
+        .unwrap_err();
+        assert_eq!(err.exit_code(), 2);
+        assert!(
+            err.user_message().contains("깊이 한도를 초과"),
+            "{}",
+            err.user_message()
+        );
+        assert!(
+            !out.exists(),
+            "limit 초과 archive는 출력 디렉터리를 만들기 전에 거부해야 한다"
+        );
+    }
+
     fn test_path(name: &str) -> PathBuf {
         let path =
             std::env::temp_dir().join(format!("git-scv-snapshot-{name}-{}", std::process::id()));
@@ -483,8 +587,19 @@ mod tests {
         path
     }
 
+    fn test_snapshot_command(url: &str, out: &Path, sha256: &str) -> crate::model::RunCommand {
+        crate::inspect::snapshot_command(&crate::cli::SnapshotArgs {
+            url: url.into(),
+            out: out.to_path_buf(),
+            sha256: Some(sha256.into()),
+        })
+    }
+
     fn assert_snapshot_run_artifacts(out: &Path) {
         for name in [
+            "artifact_manifest.json",
+            "brief.json",
+            "brief.md",
             "run.json",
             "source.json",
             "inventory.json",
@@ -498,6 +613,11 @@ mod tests {
             "slices.json",
             "review.json",
             "security.json",
+            "connection_graph.json",
+            "analysis_plan.json",
+            "cross_unit_analysis.json",
+            "synthesis.json",
+            "followup_plan.json",
             "report.md",
             "report.html",
         ] {

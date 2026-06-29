@@ -94,7 +94,7 @@ pub fn render(data: &RunData) -> String {
         raw_ack = yes_no(data.sensitive.raw_ack_confirmed),
         sensitive_note = data.sensitive.note.as_str(),
         sensitive_gate = yes_no(data.gates.sensitive_raw_review.approval_required),
-        execution_gate = yes_no(data.gates.execution_review.approval_required),
+        execution_gate = yes_no(data.gates.execution_command_review.approval_required),
         auto_exec_count = data.gates.automatic_execution_candidates.len(),
         execution_related_count = data.gates.execution_related_candidates.len(),
         slice_count = data.slices.slices.len(),
@@ -210,20 +210,30 @@ mod tests {
                     "include-approved-sensitive-raw-in-diagnostic-input",
                 ],
             ),
-            action("execution-review", true, vec!["setup.sh"], vec![]),
+            action(
+                "execution-model-input-review",
+                true,
+                vec!["setup.sh"],
+                vec![],
+            ),
             action("oversized-slice-review", true, vec![], vec![]),
         ];
 
         let summary = required_actions_summary(&actions);
 
         assert!(summary.contains("sensitive-raw-review(1개 경로, ack review-sensitive-candidates, include-approved-sensitive-raw-in-diagnostic-input)"));
-        assert!(summary.contains("execution-review(1개 경로)"));
+        assert!(summary.contains("execution-model-input-review(1개 경로)"));
         assert!(summary.contains("oversized-slice-review(0개 경로)"));
     }
 
     #[test]
     fn required_actions_summary_reports_no_required_actions() {
-        let actions = vec![action("execution-review", false, vec!["setup.sh"], vec![])];
+        let actions = vec![action(
+            "execution-model-input-review",
+            false,
+            vec!["setup.sh"],
+            vec![],
+        )];
 
         assert_eq!(required_actions_summary(&actions), "필수 액션 없음");
     }

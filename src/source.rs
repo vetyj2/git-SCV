@@ -5,7 +5,14 @@
 //! `<root>/.git` 이 있을 때만 깃 저장소다.
 
 use crate::errors::ScvError;
-use crate::model::{GitInfo, GitRemote, InputInfo, SourceArtifact, SCHEMA_VERSION};
+use crate::model::{
+    EntryKind, GitInfo, GitRemote, InputInfo, InventoryArtifact, PathPrivacy, PathPrivacyMode,
+    SensitiveArtifact, SourceArtifact, SourceFingerprint, LOCAL_MAX_READ_BYTES_PER_MANIFEST,
+    LOCAL_MAX_TOTAL_READ_BYTES, SCHEMA_VERSION,
+};
+use crate::redaction::redact_remote_url;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
@@ -41,9 +48,177 @@ pub fn identify(
             resolved_path: resolved.display().to_string(),
             git,
             snapshot: None,
+            path_privacy: PathPrivacy::new(PathPrivacyMode::RepoRelative),
+            source_fingerprint: None,
         },
         dirty_unknown,
     ))
+}
+
+pub fn apply_path_privacy(
+    source: &mut SourceArtifact,
+    inventory: &mut InventoryArtifact,
+    mode: PathPrivacyMode,
+) {
+    source.path_privacy = PathPrivacy::new(mode);
+    match mode {
+        PathPrivacyMode::RepoRelative => {
+            source.input.raw = "<repo-root>".into();
+            source.resolved_path = "<repo-root>".into();
+            inventory.root = "<repo-root>".into();
+            if let Some(snapshot) = source.snapshot.as_mut() {
+                snapshot.extracted_path = "<repo-root>".into();
+            }
+        }
+        PathPrivacyMode::RedactedAbsolute => {
+            source.input.raw = redact_home(&source.input.raw);
+            source.resolved_path = redact_home(&source.resolved_path);
+            inventory.root = redact_home(&inventory.root);
+            if let Some(snapshot) = source.snapshot.as_mut() {
+                snapshot.extracted_path = redact_home(&snapshot.extracted_path);
+            }
+        }
+        PathPrivacyMode::Absolute => {}
+    }
+}
+
+fn redact_home(value: &str) -> String {
+    let Ok(home) = std::env::var("HOME") else {
+        return value.into();
+    };
+    if home.is_empty() {
+        return value.into();
+    }
+    value.replace(&home, "<home>")
+}
+
+pub fn fingerprint(
+    source: &SourceArtifact,
+    inventory: &InventoryArtifact,
+    sensitive: &SensitiveArtifact,
+    root: &Path,
+    created_at: &str,
+) -> SourceFingerprint {
+    let sensitive_paths = sensitive
+        .candidates
+        .iter()
+        .map(|candidate| candidate.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let inventory_hash = hash_inventory(inventory);
+    let non_sensitive_content_hash = hash_non_sensitive_content(inventory, root, &sensitive_paths);
+    let sensitive_metadata_hash = hash_sensitive_metadata(sensitive);
+    let kind = if source.snapshot.is_some() {
+        "snapshot"
+    } else if source.git.is_some() {
+        "git-worktree"
+    } else {
+        "plain-directory"
+    };
+    let git_commit = source.git.as_ref().and_then(|git| git.commit.clone());
+    let git_branch = source.git.as_ref().and_then(|git| git.branch.clone());
+    let git_dirty = source.git.as_ref().and_then(|git| git.dirty);
+    let git_untracked_policy = "included-metadata";
+    let raw_sensitive_content_hashed = false;
+    let symlinks_followed = false;
+    let fingerprint_material = format!(
+        "kind={kind}\ngit_commit={:?}\ngit_branch={:?}\ngit_dirty={:?}\ngit_untracked_policy={git_untracked_policy}\ninventory_hash={inventory_hash}\nnon_sensitive_content_hash={non_sensitive_content_hash}\nsensitive_metadata_hash={sensitive_metadata_hash}\nraw_sensitive_content_hashed={raw_sensitive_content_hashed}\nsymlinks_followed={symlinks_followed}\n",
+        git_commit, git_branch, git_dirty
+    );
+    let fingerprint_hash = sha256_prefixed(fingerprint_material.as_bytes());
+
+    SourceFingerprint {
+        kind: kind.into(),
+        git_commit,
+        git_branch,
+        git_dirty,
+        git_untracked_policy: git_untracked_policy.into(),
+        inventory_hash,
+        non_sensitive_content_hash,
+        sensitive_metadata_hash,
+        raw_sensitive_content_hashed,
+        symlinks_followed,
+        created_at: created_at.into(),
+        fingerprint_hash,
+    }
+}
+
+fn hash_inventory(inventory: &InventoryArtifact) -> String {
+    let mut material = String::new();
+    for entry in &inventory.entries {
+        material.push_str(&format!(
+            "{}\t{:?}\t{:?}\t{:?}\t{:?}\n",
+            entry.path, entry.kind, entry.size, entry.ext, entry.symlink_target
+        ));
+    }
+    for skipped in &inventory.skipped {
+        material.push_str(&format!(
+            "skipped\t{}\t{:?}\n",
+            skipped.path, skipped.reason
+        ));
+    }
+    sha256_prefixed(material.as_bytes())
+}
+
+fn hash_non_sensitive_content(
+    inventory: &InventoryArtifact,
+    root: &Path,
+    sensitive_paths: &BTreeSet<&str>,
+) -> String {
+    let mut hasher = Sha256::new();
+    let mut total_read = 0_u64;
+    for entry in &inventory.entries {
+        if entry.kind != EntryKind::File || sensitive_paths.contains(entry.path.as_str()) {
+            continue;
+        }
+        hasher.update(entry.path.as_bytes());
+        hasher.update(b"\0");
+        let size = entry.size.unwrap_or(0);
+        if size > LOCAL_MAX_READ_BYTES_PER_MANIFEST {
+            hasher.update(b"content-skipped:manifest-read-limit-exceeded");
+        } else if total_read.saturating_add(size) > LOCAL_MAX_TOTAL_READ_BYTES {
+            hasher.update(b"content-skipped:total-read-limit-exceeded");
+        } else {
+            match fs::read(root.join(&entry.path)) {
+                Ok(bytes) => hasher.update(sha256_bytes(&bytes).as_bytes()),
+                Err(err) => hasher.update(format!("unreadable:{err}").as_bytes()),
+            }
+            total_read = total_read.saturating_add(size);
+        }
+        hasher.update(b"\n");
+    }
+    format!("sha256:{}", hex_lower(hasher.finalize()))
+}
+
+fn hash_sensitive_metadata(sensitive: &SensitiveArtifact) -> String {
+    let mut material = String::new();
+    for candidate in &sensitive.candidates {
+        material.push_str(&format!(
+            "{}\t{:?}\t{}\t{:?}\n",
+            candidate.path, candidate.size, candidate.summary, candidate.signals
+        ));
+    }
+    sha256_prefixed(material.as_bytes())
+}
+
+fn sha256_prefixed(bytes: &[u8]) -> String {
+    format!("sha256:{}", sha256_bytes(bytes))
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex_lower(hasher.finalize())
+}
+
+fn hex_lower(bytes: impl AsRef<[u8]>) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let bytes = bytes.as_ref();
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn identify_git(root: &Path) -> (Option<GitInfo>, bool) {
@@ -89,37 +264,9 @@ fn identify_git(root: &Path) -> (Option<GitInfo>, bool) {
     )
 }
 
-fn redact_remote_url(url: &str) -> String {
-    let Some(scheme_end) = url.find("://") else {
-        return redact_scp_like_remote_url(url).unwrap_or_else(|| url.into());
-    };
-    let authority_start = scheme_end + 3;
-    let path_start = url[authority_start..]
-        .find('/')
-        .map(|pos| authority_start + pos)
-        .unwrap_or(url.len());
-    let Some(at_offset) = url[authority_start..path_start].find('@') else {
-        return url.into();
-    };
-    let at = authority_start + at_offset;
-    format!("{}***@{}", &url[..authority_start], &url[at + 1..])
-}
-
-fn redact_scp_like_remote_url(url: &str) -> Option<String> {
-    let (user, rest) = url.split_once('@')?;
-    let (host, path) = rest.split_once(':')?;
-    if user.is_empty() || host.is_empty() || path.is_empty() {
-        return None;
-    }
-    if user.contains('/') || host.contains('/') {
-        return None;
-    }
-    Some(format!("***@{host}:{path}"))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::redact_remote_url;
+    use crate::redaction::redact_remote_url;
 
     #[test]
     fn remote_url_userinfo_is_redacted() {
