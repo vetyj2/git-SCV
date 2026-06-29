@@ -146,6 +146,16 @@ pub fn render(data: &RunData) -> String {
       <ul>{required_actions}</ul>
     </section>
     <section>
+      <h2>Architecture Visualization</h2>
+      <div class="grid">
+        <div class="item"><div class="label">기본 시각화</div><div class="value">architecture.html</div></div>
+        <div class="item"><div class="label">주요 view</div><div class="value">overview, execution-scenarios, security-gates, synthesis</div></div>
+        <div class="item"><div class="label">raw target content</div><div class="value">not included</div></div>
+        <div class="item"><div class="label">safe claim made</div><div class="value">false</div></div>
+      </div>
+      <p class="note">architecture.html은 Git-SCV가 생성한 정적 viewer이며 target repository HTML/JS를 실행하지 않습니다.</p>
+    </section>
+    <section>
       <h2>발견사항</h2>
       {findings}
     </section>

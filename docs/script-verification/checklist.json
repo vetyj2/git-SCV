@@ -10,7 +10,10 @@
       "docs/CASE_PACKAGES.md",
       "docs/RELEASE.md",
       "docs/SECURITY_MODEL.md",
-      "docs/SUPPORTED_SURFACES.md"
+      "docs/SUPPORTED_SURFACES.md",
+      "docs/VISUALIZATION.md",
+      "docs/RC_ACCEPTANCE.md",
+      "docs/RC_BLOCKERS.md"
     ],
     "user_intent": [
       "Hermes must not skip brief, gates, source verification, or cleanup safety.",
@@ -38,7 +41,7 @@
           "id": "REQ-0200-FLOW-NO-BYPASS",
           "description": "Script flow does not bypass inspect/snapshot artifact generation before briefing.",
           "criteria": [
-            "inspect creates a case run directory before invoking git-scv inspect",
+            "inspect delegates local package creation to git-scv case create",
             "snapshot creates a case package and then points to snapshot/run",
             "brief is printed after inspect and snapshot"
           ]
@@ -49,7 +52,8 @@
           "criteria": [
             "artifact_manifest.json is visible in case info",
             "brief.json and brief.md are visible in case info",
-            "review, security, gates, sensitive, and slices artifacts are visible"
+            "review, security, gates, sensitive, and slices artifacts are visible",
+            "architecture.html and architecture map artifacts are visible"
           ]
         },
         {
@@ -58,16 +62,17 @@
           "criteria": [
             "gates.json path is printed",
             "brief command is printed",
-            "brief subcommand resolves run artifacts from a case directory"
+            "brief subcommand delegates to git-scv case brief",
+            "next-action command delegates to git-scv case next-action"
           ]
         },
         {
           "id": "REQ-CASE-PACKAGE-SAFETY",
           "description": "Script case packages are created under a configured root and deletion is scoped to that root.",
           "criteria": [
-            "case root is canonicalized",
-            "new cases contain a harness sentinel",
-            "cleanup refuses paths outside the case root"
+            "case root is provided through GIT_SCV_CASE_ROOT",
+            "new cases are created by git-scv case create",
+            "cleanup delegates to git-scv case delete/prune"
           ]
         },
         {
@@ -92,6 +97,7 @@
           "description": "Script exposes coverage, graph, synthesis, and follow-up artifacts so unsupported surfaces and unresolved edges remain visible.",
           "criteria": [
             "connection_graph.json is visible",
+            "architecture.html and visualization_index.json are visible",
             "analysis_plan.json is visible",
             "cross_unit_analysis.json, synthesis.json, and followup_plan.json are visible"
           ]
@@ -113,7 +119,7 @@
           "id": "UI-BRIEF-FIRST",
           "description": "A case-producing command prints the mandatory brief before any next action.",
           "criteria": [
-            "inspect calls git-scv brief after printing case info",
+            "inspect calls git-scv case brief after printing case info",
             "snapshot calls git-scv brief after printing case info",
             "brief command is listed as mandatory"
           ]
@@ -132,7 +138,8 @@
           "description": "Script does not present execution as available without source-bound review artifacts.",
           "criteria": [
             "artifact_manifest.json and brief.json are exposed",
-            "script has no run/install target command helper"
+            "script has no run/install target command helper",
+            "next-action command is exposed before execution approval"
           ]
         },
         {
@@ -141,16 +148,17 @@
           "criteria": [
             "gates.json path is printed",
             "brief output is printed",
-            "connection graph and synthesis paths are visible"
+            "connection graph and synthesis paths are visible",
+            "gate_decisions.json path is printed"
           ]
         },
         {
           "id": "UI-CLEANUP-SCOPE",
           "description": "Cleanup is limited to harness case packages and cannot delete arbitrary source paths.",
           "criteria": [
-            "cleanup canonicalizes the requested target",
-            "cleanup refuses paths outside case root",
-            "cleanup refuses the case root itself"
+            "cleanup delegates to git-scv case delete",
+            "cleanup-all delegates to git-scv case prune",
+            "wrapper does not directly delete case directories"
           ]
         },
         {
@@ -181,6 +189,7 @@
           "description": "The script aligns with artifact no-leak and contract-v2 usage by surfacing artifact paths rather than raw evidence.",
           "criteria": [
             "artifact_manifest.json is surfaced",
+            "architecture.html is surfaced",
             "brief and report artifacts are surfaced",
             "raw target command bodies are not printed"
           ]
@@ -200,7 +209,8 @@
           "criteria": [
             "brief command is first-class",
             "gates.json and brief artifacts are visible",
-            "case-producing commands print git-scv brief"
+            "case-producing commands print git-scv brief",
+            "next-action blocker command is first-class"
           ]
         },
         {
@@ -208,8 +218,8 @@
           "description": "Cleanup follows case package deletion safety requirements.",
           "criteria": [
             "delete requires exact ack",
-            "delete is confined to case root",
-            "delete requires harness sentinel"
+            "delete is delegated to Rust case CLI",
+            "delete relies on .git-scv-case.json sentinel"
           ]
         },
         {
@@ -218,7 +228,8 @@
           "criteria": [
             "artifact manifest and brief paths are printed",
             "review, security, and gates artifacts are printed",
-            "brief is available as a command"
+            "brief is available as a command",
+            "next-action is available as a command"
           ]
         },
         {
@@ -235,6 +246,7 @@
           "description": "Graph, analysis plan, cross-unit synthesis, synthesis, and follow-up artifacts are visible.",
           "criteria": [
             "connection_graph.json is printed",
+            "architecture.html and architecture map artifacts are printed",
             "analysis_plan.json is printed",
             "cross_unit_analysis.json, synthesis.json, and followup_plan.json are printed"
           ]

@@ -30,7 +30,7 @@
 | WP4 | detect.rs | 0500-detect.md 1–2절 | T03 | 규칙 D01–D13 전부, D13의 내용 미열람 |
 | WP5 | evidence.rs, findings.rs | 0500-detect.md 3–4절 | T04, T05 | 증거 없는 발견사항이 타입에서 거부됨 |
 | WP6 | validate.rs | 0900-artifacts.md 3절 | T11 | V01–V25 각각 개별 결함 주입 시 개별 실패 |
-| WP7 | artifacts.rs, report.rs, dependencies.rs, sectors.rs, sensitive.rs, gates.rs, slices.rs, review.rs, web_report.rs, graph.rs, synthesis.rs | 0900-artifacts.md 1–2절 | T06, T10 | 23개 inspect 산출물, 결정적 바이트, 리포트 템플릿 일치 |
+| WP7 | artifacts.rs, report.rs, dependencies.rs, sectors.rs, sensitive.rs, gates.rs, slices.rs, review.rs, web_report.rs, graph.rs, visualization.rs, synthesis.rs | 0900-artifacts.md 1–2절 | T06, T10 | 31개 inspect 산출물, 결정적 바이트, 리포트/시각화 템플릿 일치 |
 | WP8 | inspect.rs 조립 | 0200-flow.md 1–2절 | T06, T07 전부 | 중간 단계 강제 실패 시에도 run.json 생성 |
 | WP9 | 마무리 | 전체 | T01–T12 전부 | fmt·clippy 무경고, CI 초록 |
 
@@ -46,7 +46,7 @@ WP6·WP7은 WP5 뒤, WP8은 WP2+WP3+WP7 뒤.
 | T03 | tests/detect.rs | D01–D13 각각 고정 입력으로 매치·문구 검증 | 0501–0507 |
 | T04 | tests/findings.rs | `Finding::new(.., 빈 증거)` 가 Err | 0605, 1304 |
 | T05 | tests/findings.rs | D13 파일 내용 문자열이 어떤 산출물에도 없음 | 1103, 1104 |
-| T06 | tests/integration.rs | 고정 저장소 → 23개 inspect 산출물, 스키마 필수 필드, 승인 게이트·읽기 슬라이스·보안 요약·그래프·합성·웹 리포트 확인 | 1302, 1303, 8002–8005 |
+| T06 | tests/integration.rs | 고정 저장소 → 31개 inspect 산출물, 스키마 필수 필드, 승인 게이트·읽기 슬라이스·보안 요약·그래프·시각화·합성·웹 리포트 확인 | 1302, 1303, 8002–8005 |
 | T07 | tests/integration.rs | 깃 아닌 디렉터리 → 성공, `"git": null` | 0303 |
 | T08 | tests/integration.rs | `discovered == listed + skipped`, 심링크는 skipped로만 집계 | 0406 |
 | T09 | tests/no_exec.rs | src/ 전체에 `Command::`, `.spawn(`, `.output(`, `.status(` 부재 | 1305, 1307 |
@@ -80,7 +80,7 @@ NUL 바이너리)은 시험 헬퍼 `tests/common/mod.rs`의 `materialize()`가
 | 완료 기준 | 확인 방법 |
 | --- | --- |
 | 8001 로컬 깃 저장소 성공 | git-scv 저장소 자신 self-inspect (WP9에서 수동 1회 + T06) |
-| 8002 inspect 산출물 23개 생성 | T06 |
+| 8002 inspect 산출물 31개 생성 | T06 |
 | 8003 리포트 핵심 절 포함 | T06 (report.md 절 제목 검사) |
 | 8004 발견사항이 증거 참조 | T04, T11(V02) |
 | 8005 건너뜀·한도 기록 | T06, T08 |

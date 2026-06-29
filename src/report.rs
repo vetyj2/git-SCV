@@ -64,7 +64,14 @@ pub fn render(data: &RunData) -> String {
 ## 기계 요약\n\n\
 - 검토 판정: {review_verdict}\n\
 - 필요한 후속 액션: {required_actions}개\n\
-- 필요한 후속 액션 목록: {required_action_list}\n\n\
+- 필요한 후속 액션 목록: {required_action_list}\n\
+- 기본 시각화: architecture.html\n\
+- 먼저 볼 view: overview, execution-scenarios, security-gates, synthesis\n\n\
+## Architecture Visualization\n\n\
+- architecture.html: repo shape, source landmarks, execution scenario reachability, relation map, gate overlay, synthesis summary\n\
+- architecture_map.json: 상위 구조와 entrypoint\n\
+- relation_map.json: script/manifest/config/gate 관계\n\
+- source_landmarks.json: 권장 읽기 순서와 gate-before-reading 경로\n\n\
 ## 의존성 요약\n\n\
 - 매니페스트: {dependency_manifest_count}개\n\
 - 직접 의존성 이름: {dependency_count}개\n\

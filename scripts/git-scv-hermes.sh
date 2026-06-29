@@ -3,6 +3,8 @@ set -euo pipefail
 
 REPO_URL="${GIT_SCV_REPO_URL:-https://github.com/vetyj2/git-SCV}"
 CASE_ROOT="${GIT_SCV_CASE_ROOT:-${TMPDIR:-/tmp}/git-scv-cases}"
+INSTALL_TAG="${GIT_SCV_INSTALL_TAG:-v0.3.0}"
+UPDATE_TAG="${GIT_SCV_UPDATE_TAG:-v0.3.0}"
 
 die() {
   printf 'error: %s\n' "$*" >&2
@@ -20,22 +22,26 @@ git-scv Hermes harness
 Commands:
   commands                         List user intents and matching harness commands
   install [commit-sha]             Install Git-SCV from GitHub, optionally pinned
-  update-latest                    Reinstall Git-SCV from the latest GitHub default branch
+  update-latest                    Reinstall Git-SCV from a configured release tag
   uninstall                        Remove the installed git-scv binary with cargo
   version                          Print git-scv version
-  inspect <repo-path> [label]      Create a case package and run git-scv inspect
+  inspect <repo-path>              Create a case package with git-scv case create
   snapshot <url> <sha256> [label]  Create a case package and run git-scv snapshot
-  brief <case-dir>                 Print the mandatory agent briefing for a case
-  show <case-dir>                  Print important artifact paths for a case
+  brief <case-id>                  Print the mandatory agent briefing for a case
+  show <case-id>                   Print important artifact paths for a case
   list                             List local case packages
-  cleanup <case-dir> --ack delete-git-scv-case
-                                   Remove one harness case package under the case root
+  next-action <case-id> --action <kind> [--argv ...]
+                                   Ask git-scv whether a next action is blocked
+  cleanup <case-id> --ack delete-git-scv-case
+                                   Remove one case package through git-scv case delete
   cleanup-all --ack delete-all-git-scv-cases
-                                   Remove every harness case package under the case root
+                                   Remove every case package through git-scv case prune
 
 Environment:
   GIT_SCV_REPO_URL    Git repository URL for install/update
   GIT_SCV_CASE_ROOT   Directory for per-repository report packages
+  GIT_SCV_INSTALL_TAG Release tag used by install without a commit
+  GIT_SCV_UPDATE_TAG  Release tag used by update-latest
 EOF
 }
 
@@ -49,23 +55,26 @@ Install Git-SCV:
 Install a reviewed revision:
   scripts/git-scv-hermes.sh install <commit-sha>
 
-Update Git-SCV to latest GitHub version:
+Update Git-SCV to a configured release tag:
   scripts/git-scv-hermes.sh update-latest
 
 Inspect a local repository:
-  scripts/git-scv-hermes.sh inspect <repo-path> [label]
+  scripts/git-scv-hermes.sh inspect <repo-path>
 
 Inspect a verified HTTPS archive:
   scripts/git-scv-hermes.sh snapshot <archive-url> <sha256> [label]
 
 Show report paths for an existing case:
-  scripts/git-scv-hermes.sh show <case-dir>
+  scripts/git-scv-hermes.sh show <case-id>
 
 Print the mandatory agent briefing before any next action:
-  scripts/git-scv-hermes.sh brief <case-dir>
+  scripts/git-scv-hermes.sh brief <case-id>
+
+Check whether install/build/test/run/model-input is blocked:
+  scripts/git-scv-hermes.sh next-action <case-id> --action install --argv <program> <arg>
 
 Delete one report package after review:
-  scripts/git-scv-hermes.sh cleanup <case-dir> --ack delete-git-scv-case
+  scripts/git-scv-hermes.sh cleanup <case-id> --ack delete-git-scv-case
 
 Delete all local report packages:
   scripts/git-scv-hermes.sh cleanup-all --ack delete-all-git-scv-cases
@@ -79,6 +88,30 @@ EOF
 case_root() {
   mkdir -p "$CASE_ROOT"
   (cd "$CASE_ROOT" && pwd -P)
+}
+
+case_cli() {
+  GIT_SCV_CASE_ROOT="$(case_root)" git-scv case "$@"
+}
+
+case_id_from_output() {
+  while IFS= read -r line; do
+    case "$line" in
+      case_id=*)
+        printf '%s\n' "${line#case_id=}"
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+case_id_from_arg() {
+  local value="$1"
+  case "$value" in
+    */*) basename "$value" ;;
+    *) printf '%s\n' "$value" ;;
+  esac
 }
 
 sanitize_label() {
@@ -113,36 +146,45 @@ run_dir_for_case() {
 }
 
 print_case_info() {
-  local case_dir="$1"
+  local case_id="$1"
   local run_dir="$2"
 
   cat <<EOF
-case_dir=$case_dir
+case_id=$case_id
 run_dir=$run_dir
 report_md=$run_dir/report.md
 report_html=$run_dir/report.html
+architecture_html=$run_dir/architecture.html
 artifact_manifest_json=$run_dir/artifact_manifest.json
 brief_json=$run_dir/brief.json
 brief_md=$run_dir/brief.md
 security_json=$run_dir/security.json
 review_json=$run_dir/review.json
 gates_json=$run_dir/gates.json
+gate_decisions_json=$run_dir/gate_decisions.json
 sensitive_json=$run_dir/sensitive.json
 slices_json=$run_dir/slices.json
+supported_surfaces_json=$run_dir/supported_surfaces.json
 connection_graph_json=$run_dir/connection_graph.json
+reachability_scenarios_json=$run_dir/reachability_scenarios.json
+architecture_map_json=$run_dir/architecture_map.json
+relation_map_json=$run_dir/relation_map.json
+source_landmarks_json=$run_dir/source_landmarks.json
+visualization_index_json=$run_dir/visualization_index.json
 analysis_plan_json=$run_dir/analysis_plan.json
 cross_unit_analysis_json=$run_dir/cross_unit_analysis.json
 synthesis_json=$run_dir/synthesis.json
 followup_plan_json=$run_dir/followup_plan.json
-brief_command=scripts/git-scv-hermes.sh brief "$case_dir"
-cleanup_command=scripts/git-scv-hermes.sh cleanup "$case_dir" --ack delete-git-scv-case
+brief_command=scripts/git-scv-hermes.sh brief "$case_id"
+next_action_command=scripts/git-scv-hermes.sh next-action "$case_id" --action install --argv <program> <arg>
+cleanup_command=scripts/git-scv-hermes.sh cleanup "$case_id" --ack delete-git-scv-case
 EOF
 }
 
 install_cmd() {
   need_cmd cargo
   if [ "${1:-}" = "" ]; then
-    cargo install --git "$REPO_URL" --locked
+    cargo install --git "$REPO_URL" --tag "$INSTALL_TAG" --locked
   else
     cargo install --git "$REPO_URL" --rev "$1" --locked --force
   fi
@@ -150,7 +192,7 @@ install_cmd() {
 
 update_latest_cmd() {
   need_cmd cargo
-  cargo install --git "$REPO_URL" --locked --force
+  cargo install --git "$REPO_URL" --tag "$UPDATE_TAG" --locked --force
 }
 
 uninstall_cmd() {
@@ -167,14 +209,14 @@ inspect_cmd() {
   need_cmd git-scv
   local repo="${1:-}"
   [ -n "$repo" ] || die "inspect requires <repo-path>"
-  local label="${2:-$(basename "$repo")}"
-  local case_dir run_dir
-  case_dir="$(new_case_dir "$label")"
-  run_dir="$case_dir/run"
-  git-scv inspect "$repo" --out "$run_dir"
-  print_case_info "$case_dir" "$run_dir"
+  local create_output case_id run_dir
+  create_output="$(case_cli create "$repo" --path-privacy repo-relative)"
+  printf '%s\n' "$create_output"
+  case_id="$(printf '%s\n' "$create_output" | case_id_from_output)" || die "case create did not return case_id"
+  run_dir="$(case_root)/$case_id"
+  print_case_info "$case_id" "$run_dir"
   printf '\n'
-  git-scv brief "$run_dir"
+  case_cli brief "$case_id"
 }
 
 snapshot_cmd() {
@@ -189,68 +231,50 @@ snapshot_cmd() {
   snapshot_dir="$case_dir/snapshot"
   git-scv snapshot "$url" --out "$snapshot_dir" --sha256 "$sha256"
   run_dir="$snapshot_dir/run"
-  print_case_info "$case_dir" "$run_dir"
+  print_case_info "snapshot-run" "$run_dir"
   printf '\n'
   git-scv brief "$run_dir"
 }
 
 brief_cmd() {
   need_cmd git-scv
-  local case_dir="${1:-}"
-  [ -n "$case_dir" ] || die "brief requires <case-dir>"
-  [ -d "$case_dir" ] || die "case directory not found: $case_dir"
-  local run_dir
-  run_dir="$(run_dir_for_case "$case_dir")" || die "case has no run artifacts: $case_dir"
-  git-scv brief "$run_dir"
+  local case_id="${1:-}"
+  [ -n "$case_id" ] || die "brief requires <case-id>"
+  case_id="$(case_id_from_arg "$case_id")"
+  case_cli brief "$case_id"
 }
 
 show_cmd() {
-  local case_dir="${1:-}"
-  [ -n "$case_dir" ] || die "show requires <case-dir>"
-  [ -d "$case_dir" ] || die "case directory not found: $case_dir"
-  local run_dir
-  run_dir="$(run_dir_for_case "$case_dir")" || die "case has no run artifacts: $case_dir"
-  print_case_info "$case_dir" "$run_dir"
+  need_cmd git-scv
+  local case_id="${1:-}"
+  [ -n "$case_id" ] || die "show requires <case-id>"
+  case_id="$(case_id_from_arg "$case_id")"
+  case_cli show "$case_id"
+  print_case_info "$case_id" "$(case_root)/$case_id"
 }
 
 list_cmd() {
-  local root
-  root="$(case_root)"
-  printf 'case_root=%s\n' "$root"
-  local found=0
-  for case_dir in "$root"/*; do
-    [ -d "$case_dir" ] || continue
-    found=1
-    if run_dir="$(run_dir_for_case "$case_dir" 2>/dev/null)"; then
-      printf '%s -> %s\n' "$case_dir" "$run_dir"
-    else
-      printf '%s -> no run artifacts\n' "$case_dir"
-    fi
-  done
-  [ "$found" -eq 1 ] || printf 'no cases\n'
+  need_cmd git-scv
+  case_cli list
+}
+
+next_action_cmd() {
+  need_cmd git-scv
+  local case_id="${1:-}"
+  [ -n "$case_id" ] || die "next-action requires <case-id>"
+  shift || true
+  case_id="$(case_id_from_arg "$case_id")"
+  case_cli next-action "$case_id" "$@"
 }
 
 cleanup_cmd() {
-  [ "$#" -eq 3 ] || die "cleanup requires <case-dir> --ack delete-git-scv-case"
-  local case_dir="$1"
+  [ "$#" -eq 3 ] || die "cleanup requires <case-id> --ack delete-git-scv-case"
+  local case_id="$1"
   local ack_flag="$2"
   local ack="$3"
   [ "$ack_flag" = "--ack" ] && [ "$ack" = "delete-git-scv-case" ] || die "cleanup requires --ack delete-git-scv-case"
-  [ -d "$case_dir" ] || die "case directory not found: $case_dir"
-
-  local root target
-  root="$(case_root)"
-  target="$(cd "$case_dir" && pwd -P)"
-
-  case "$target" in
-    "$root"/*) ;;
-    *) die "refusing to remove outside case root: $target" ;;
-  esac
-  [ "$target" != "$root" ] || die "refusing to remove case root directly"
-  [ -f "$target/.git-scv-harness-case" ] || die "refusing to remove case without harness sentinel: $target"
-
-  rm -rf -- "$target"
-  printf 'removed=%s\n' "$target"
+  case_id="$(case_id_from_arg "$case_id")"
+  case_cli delete "$case_id" --ack "$ack"
 }
 
 cleanup_all_cmd() {
@@ -258,25 +282,8 @@ cleanup_all_cmd() {
   local ack_flag="$1"
   local ack="$2"
   [ "$ack_flag" = "--ack" ] && [ "$ack" = "delete-all-git-scv-cases" ] || die "cleanup-all requires --ack delete-all-git-scv-cases"
-  local root
-  root="$(case_root)"
-  [ -n "$root" ] || die "empty case root"
-  [ "$root" != "/" ] || die "refusing to remove /"
-  local deleted=0
-  local case_dir target
-  for case_dir in "$root"/*; do
-    [ -d "$case_dir" ] || continue
-    target="$(cd "$case_dir" && pwd -P)"
-    case "$target" in
-      "$root"/*) ;;
-      *) continue ;;
-    esac
-    [ -f "$target/.git-scv-harness-case" ] || continue
-    rm -rf -- "$target"
-    deleted=$((deleted + 1))
-  done
-  printf 'case_root=%s\n' "$root"
-  printf 'deleted_cases=%s\n' "$deleted"
+  need_cmd git-scv
+  case_cli prune --all --ack "$ack"
 }
 
 main() {
@@ -298,6 +305,7 @@ main() {
     brief) brief_cmd "$@" ;;
     show) show_cmd "$@" ;;
     list) list_cmd ;;
+    next-action) next_action_cmd "$@" ;;
     cleanup) cleanup_cmd "$@" ;;
     cleanup-all) cleanup_all_cmd "$@" ;;
     -h|--help|help) usage ;;

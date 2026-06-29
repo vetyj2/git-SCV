@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git-SCV gate decisions",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "source_fingerprint_hash",
+    "artifact_manifest_sha256_required",
+    "expires_on_source_change",
+    "decisions"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "gate_decisions" },
+    "schema_version": { "const": "2" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "source_fingerprint_hash": { "pattern": "^sha256:[0-9a-f]{64}$" },
+    "artifact_manifest_sha256_required": { "const": true },
+    "expires_on_source_change": { "const": true },
+    "decisions": { "type": "array" }
+  }
+}

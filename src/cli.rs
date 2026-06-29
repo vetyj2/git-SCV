@@ -169,6 +169,9 @@ pub enum CaseSubcommand {
     /// case source 상태를 출력한다
     #[command(after_help = NO_EXEC_HELP)]
     Status(CaseIdArgs),
+    /// 다음 행동이 source/receipt/gate 계약상 가능한지 판정한다
+    #[command(after_help = NO_EXEC_HELP)]
+    NextAction(CaseNextActionArgs),
     /// case package를 삭제한다
     #[command(after_help = NO_EXEC_HELP)]
     Delete(CaseDeleteArgs),
@@ -193,6 +196,18 @@ pub struct CaseCreateArgs {
 pub struct CaseIdArgs {
     /// case id
     pub case_id: String,
+}
+
+#[derive(clap::Args)]
+pub struct CaseNextActionArgs {
+    /// case id
+    pub case_id: String,
+    /// 요청하려는 행동 종류. 예: install, build, test, run, model-input, sensitive-raw
+    #[arg(long)]
+    pub action: String,
+    /// 실행 승인 요청에 묶을 exact argv. 예: --argv npm install
+    #[arg(long = "argv", num_args = 1..)]
+    pub argv: Vec<String>,
 }
 
 #[derive(clap::Args)]
@@ -239,6 +254,7 @@ pub enum Invocation {
     CaseBrief(CaseIdArgs),
     CaseVerifySource(CaseIdArgs),
     CaseStatus(CaseIdArgs),
+    CaseNextAction(CaseNextActionArgs),
     CaseDelete(CaseDeleteArgs),
     CasePrune(CasePruneArgs),
     CaseDoctor,
@@ -264,6 +280,7 @@ pub fn parse() -> Invocation {
             CaseSubcommand::Brief(args) => Invocation::CaseBrief(args),
             CaseSubcommand::VerifySource(args) => Invocation::CaseVerifySource(args),
             CaseSubcommand::Status(args) => Invocation::CaseStatus(args),
+            CaseSubcommand::NextAction(args) => Invocation::CaseNextAction(args),
             CaseSubcommand::Delete(args) => Invocation::CaseDelete(args),
             CaseSubcommand::Prune(args) => Invocation::CasePrune(args),
             CaseSubcommand::Doctor => Invocation::CaseDoctor,

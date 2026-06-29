@@ -197,12 +197,78 @@ fn baseline() -> RunData {
             ],
             note: "시험".into(),
         },
+        supported_surfaces: SupportedSurfacesArtifact {
+            schema_version: sv(),
+            run_id: rid(),
+            capabilities: vec![],
+            note: "시험".into(),
+        },
+        gate_decisions: GateDecisionArtifact {
+            schema_version: sv(),
+            run_id: rid(),
+            source_fingerprint_hash: "sha256:unknown".into(),
+            artifact_manifest_sha256_required: true,
+            expires_on_source_change: true,
+            decisions: vec![],
+            note: "시험".into(),
+        },
         connection_graph: ConnectionGraphArtifact {
             schema_version: sv(),
             run_id: rid(),
             nodes: vec![],
             edges: vec![],
             scenarios: vec![],
+        },
+        reachability_scenarios: ReachabilityScenariosArtifact {
+            schema_version: sv(),
+            run_id: rid(),
+            scenarios: vec![],
+            note: "시험".into(),
+        },
+        architecture_map: ArchitectureMapArtifact {
+            schema_version: sv(),
+            run_id: rid(),
+            repo_shape: RepoShape {
+                detected_shapes: vec!["unknown-mixed".into()],
+                confidence: "low".into(),
+                limitations: vec![],
+            },
+            sectors: vec![],
+            entrypoints: vec![],
+            architecture_summary: ArchitectureSummary {
+                human_summary: "시험".into(),
+                safe_claim_made: false,
+            },
+            visualization_recommendations: vec!["overview".into()],
+        },
+        relation_map: RelationMapArtifact {
+            schema_version: sv(),
+            run_id: rid(),
+            relations: vec![],
+            unresolved_relations: vec![],
+        },
+        source_landmarks: SourceLandmarksArtifact {
+            schema_version: sv(),
+            run_id: rid(),
+            recommended_reading_order: vec![],
+            do_not_read_by_default: vec![],
+            gate_before_reading: vec![],
+        },
+        visualization_index: VisualizationIndexArtifact {
+            schema_version: sv(),
+            run_id: rid(),
+            default_visualization: "architecture.html".into(),
+            views: vec![],
+            privacy: VisualizationPrivacy {
+                raw_sensitive_content_included: false,
+                target_repo_js_executed: false,
+                external_network_required: false,
+            },
+            graph_limits: VisualizationGraphLimits {
+                max_nodes: 200,
+                max_edges: 300,
+                truncated: false,
+            },
         },
         analysis_plan: AnalysisPlanArtifact {
             schema_version: sv(),
@@ -227,10 +293,17 @@ fn baseline() -> RunData {
             safe_claim_made: false,
             unit_analyses_complete: false,
             cross_unit_analysis_complete: "minimal-static".into(),
+            architecture_visualization_complete: true,
             source_fingerprint_verified: false,
             unresolved_edges_count: 0,
             conflicts_count: 0,
             required_user_actions: vec![],
+            architecture_synthesis: ArchitectureSynthesis {
+                detected_shapes: vec!["unknown-mixed".into()],
+                primary_sectors: vec![],
+                recommended_visualization: "architecture.html".into(),
+                source_landmarks_available: false,
+            },
             aggregate_safety_diagnosis: AggregateSafetyDiagnosis {
                 no_blocker_observed_within_scope: true,
                 blocked_execution_surfaces: vec![],
@@ -249,6 +322,7 @@ fn baseline() -> RunData {
         report_md: format!(
             "# git-scv 검사 리포트\n\n## 원본\n\n## 범위\n\n## 발견사항\n\n발견사항 없음\n\n## 한계\n\n- {LOW_CONFIDENCE_SENTENCE}\n\n## 무실행 확인\n\n{NO_EXEC_SENTENCE}\n"
         ),
+        architecture_html: "<!doctype html><html><body>시험</body></html>".into(),
     }
 }
 
@@ -689,7 +763,7 @@ fn t11_v18_secret_name_evidence_must_not_store_excerpt() {
     only(&validate(&d).unwrap_err(), "V18");
 }
 
-const ARTIFACTS: [&str; 23] = [
+const ARTIFACTS: [&str; 31] = [
     "artifact_manifest.json",
     "brief.json",
     "brief.md",
@@ -706,18 +780,30 @@ const ARTIFACTS: [&str; 23] = [
     "slices.json",
     "review.json",
     "security.json",
+    "supported_surfaces.json",
+    "gate_decisions.json",
     "connection_graph.json",
+    "reachability_scenarios.json",
+    "architecture_map.json",
+    "relation_map.json",
+    "source_landmarks.json",
+    "visualization_index.json",
     "analysis_plan.json",
     "cross_unit_analysis.json",
     "synthesis.json",
     "followup_plan.json",
     "report.md",
     "report.html",
+    "architecture.html",
 ];
 
 fn write_all_artifacts(dir: &std::path::Path) {
     for name in ARTIFACTS {
-        let content = if name == "report.md" || name == "report.html" || name == "brief.md" {
+        let content = if name == "report.md"
+            || name == "report.html"
+            || name == "brief.md"
+            || name == "architecture.html"
+        {
             format!("## 무실행 확인\n\n{NO_EXEC_SENTENCE}\n")
         } else {
             "{}".to_string()

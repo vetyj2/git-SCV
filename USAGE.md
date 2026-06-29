@@ -137,16 +137,19 @@ Update Git-SCV from the GitHub repository:
   scripts/git-scv-hermes.sh update-latest
 
 Inspect a local repository:
-  scripts/git-scv-hermes.sh inspect <repo-path> [label]
+  scripts/git-scv-hermes.sh inspect <repo-path>
 
 Inspect a verified HTTPS archive:
   scripts/git-scv-hermes.sh snapshot <archive-url> <sha256> [label]
 
 Print the mandatory agent briefing:
-  scripts/git-scv-hermes.sh brief <case-dir>
+  scripts/git-scv-hermes.sh brief <case-id>
+
+Check whether a next action is blocked:
+  scripts/git-scv-hermes.sh next-action <case-id> --action install --argv <program> <arg>
 
 Delete one report package after review:
-  scripts/git-scv-hermes.sh cleanup <case-dir> --ack delete-git-scv-case
+  scripts/git-scv-hermes.sh cleanup <case-id> --ack delete-git-scv-case
 
 Delete all local report packages:
   scripts/git-scv-hermes.sh cleanup-all --ack delete-all-git-scv-cases
@@ -155,16 +158,16 @@ Uninstall Git-SCV:
   scripts/git-scv-hermes.sh uninstall
 ```
 
-The legacy harness creates a per-repository package under
-`${TMPDIR:-/tmp}/git-scv-cases` by default. The Rust case CLI creates managed
-case packages under the configured Git-SCV case root.
+The harness delegates local inspect, brief, next-action, list, and cleanup to
+the Rust case CLI. Case packages are stored under the configured Git-SCV case
+root.
 
-The script only orchestrates Git-SCV and cleanup. It does not call a model and
-does not make safety decisions. `inspect` and `snapshot` automatically print the
-compact `git-scv brief` output after creating a case package. Agents must be
-able to restate that brief before deciding what may be sent to a model or before
-asking the user to approve execution. If the brief cannot be produced, stop and
-run `scripts/git-scv-hermes.sh brief <case-dir>` again.
+The script only orchestrates Git-SCV case commands and cleanup. It does not call
+a model and does not make safety decisions. `inspect` automatically prints the
+compact `git-scv case brief` output after creating a case package. Agents must
+be able to restate that brief before deciding what may be sent to a model or
+before asking the user to approve execution. If the brief cannot be produced,
+stop and run `scripts/git-scv-hermes.sh brief <case-id>` again.
 
 ## Artifact Files
 
@@ -184,10 +187,17 @@ dependencies.json
 sectors.json
 sensitive.json
 gates.json
+gate_decisions.json
 slices.json
 review.json
 security.json
+supported_surfaces.json
 connection_graph.json
+reachability_scenarios.json
+architecture_map.json
+relation_map.json
+source_landmarks.json
+visualization_index.json
 analysis_plan.json
 cross_unit_analysis.json
 synthesis.json
@@ -195,6 +205,7 @@ followup_plan.json
 agent_receipt.json (after `git-scv receipt create`)
 report.md
 report.html
+architecture.html
 ```
 
 Use them in this order:
@@ -221,32 +232,48 @@ Use them in this order:
 12. `gates.json`: sensitive raw-review and execution approval candidate lists,
    including execution approval before model input and structured sensitive
    review ack strings.
-13. `slices.json`: path-only reading slices derived from `sectors.json` and
+13. `gate_decisions.json`: source/artifact-bound approval-decision envelope.
+   No approval is created automatically.
+14. `slices.json`: path-only reading slices derived from `sectors.json` and
    `gates.json`; each file may include a path or extension based language hint
    and deep-analysis candidate flag. Sensitive and execution candidates are
    excluded from default model input until separately approved.
-14. `review.json`: machine-readable verdict, totals including deep-analysis
+15. `review.json`: machine-readable verdict, totals including deep-analysis
    candidate count, required actions, and structured approval acknowledgements.
-15. `security.json`: machine-readable security summary for other tools. It
+16. `security.json`: machine-readable security summary for other tools. It
    mirrors verdict, counts, required actions, excluded paths, limitations, and
    source artifact references without reading new files or proving safety.
-16. `connection_graph.json`: file, manifest, script, hook, workflow,
+17. `supported_surfaces.json`: parsed, name-detected, unsupported, and
+   parse-failed capability matrix.
+18. `connection_graph.json`: file, manifest, script, hook, workflow,
    dependency, sensitive candidate, prompt-injection surface, and approval-gate
    graph.
-17. `analysis_plan.json`: unit-analysis and cross-unit synthesis plan, including
+19. `reachability_scenarios.json`: user-action to reachable-node scenarios.
+20. `architecture_map.json`: repo shape, sectors, entrypoints, and architecture
+   summary with `safe_claim_made:false`.
+21. `relation_map.json`: script, scenario, manifest, config, dependency, and
+   gate relations.
+22. `source_landmarks.json`: recommended reading order, do-not-read-by-default,
+   and gate-before-reading paths.
+23. `visualization_index.json`: views and privacy contract for
+   `architecture.html`.
+24. `analysis_plan.json`: unit-analysis and cross-unit synthesis plan, including
    allowed path boundaries and required cross-unit questions.
-18. `cross_unit_analysis.json`: static aggregate scenario analysis and
+25. `cross_unit_analysis.json`: static aggregate scenario analysis and
    synergy/follow-up markers such as sensitive-plus-execution overlap.
-19. `synthesis.json`: whole-repo diagnosis summary. It keeps
+26. `synthesis.json`: whole-repo diagnosis summary. It keeps
    `safe_claim_made:false` and records what cannot be concluded.
-20. `followup_plan.json`: concrete next-round tasks when gates, unsupported
+27. `followup_plan.json`: concrete next-round tasks when gates, unsupported
    surfaces, unresolved edges, or follow-up questions remain.
-21. `agent_receipt.json`: agent acknowledgement bound to manifest and source
+28. `agent_receipt.json`: agent acknowledgement bound to manifest and source
    fingerprint, created after `git-scv receipt create`.
-22. `report.md`: human-readable Markdown summary, including sensitive review
+29. `report.md`: human-readable Markdown summary, including sensitive review
    ack status and the required action list.
-23. `report.html`: browser-friendly human-readable summary, including
+30. `report.html`: browser-friendly human-readable summary, including
    sensitive review ack status and required ack strings.
+31. `architecture.html`: default interactive local viewer for overview,
+   execution scenarios, script relations, gates, coverage, landmarks, and
+   synthesis. It does not execute target repo HTML or JavaScript.
 
 ## Unit Analysis Loop
 
@@ -268,24 +295,20 @@ summarize the static artifacts already produced by inspection.
 
 ## Artifact Cleanup
 
-Artifacts are evidence packages. Git-SCV does not delete them automatically.
-After the user has reviewed the report and decided what to do next, remove the
-whole output package:
-
-```sh
-rm -rf <run-dir>
-rm -rf <snapshot-dir>
-```
+Artifacts are evidence packages. Git-SCV does not delete ad hoc `--out`
+directories automatically. Prefer managed case packages when cleanup safety
+matters.
 
 When using `scripts/git-scv-hermes.sh`, prefer:
 
 ```sh
-scripts/git-scv-hermes.sh cleanup <case-dir> --ack delete-git-scv-case
+scripts/git-scv-hermes.sh cleanup <case-id> --ack delete-git-scv-case
 scripts/git-scv-hermes.sh cleanup-all --ack delete-all-git-scv-cases
 ```
 
-`cleanup <case-dir>` refuses to delete paths outside the configured case root
-and requires a harness sentinel plus the exact acknowledgement string.
+`cleanup <case-id>` delegates deletion to `git-scv case delete`, which refuses
+paths outside the configured case root and requires the exact acknowledgement
+string.
 
 ## Required Actions
 

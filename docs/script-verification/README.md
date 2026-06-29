@@ -20,7 +20,7 @@ a script module or the final verification stage.
 | SV2 REQ conformance | Map each module to CLI, flow, artifact, gate, case, release, security, and supported-surface requirements. | `traceability.json` |
 | SV3 user-intent conformance | Map each module to the user-requested Hermes behavior: no target execution, brief-first, no leak, source/gate binding awareness, and cleanup safety. | `traceability.json` |
 | SV4 0629 conformance | Map each module to the 2026-06-29 P0/P1/P1.5/P3/P4/P5 security plan. | `traceability.json` |
-| SV5 mechanical checks | Run tests that verify script inventory completeness, checklist coverage, cleanup acknowledgement, sentinel deletion guard, brief-first output, synthesis artifact visibility, and target package-manager no-exec constraints. | `tests/script_contract.rs` |
+| SV5 mechanical checks | Run tests that verify script inventory completeness, checklist coverage, cleanup acknowledgement, Rust case deletion delegation, brief-first output, architecture/synthesis artifact visibility, and target package-manager no-exec constraints. | `tests/script_contract.rs` |
 | SV6 final meta-check | Confirm that every checklist item is referenced by a module or final verification entry and that every module has REQ, user-intent, and 0629 coverage. | `tests/script_contract.rs` |
 
 ## Module Rules
@@ -68,6 +68,6 @@ The script verification work is complete only when:
 - Every checklist item is covered by a module or final verification.
 - Every module has REQ, user-intent, and 2026-06-29 coverage.
 - The Hermes script exposes the mandatory brief and synthesis artifacts.
-- Cleanup requires exact acknowledgement and a harness sentinel.
+- Cleanup requires exact acknowledgement and delegates to Rust case delete/prune.
 - The script does not run target repository package managers or container
   commands.

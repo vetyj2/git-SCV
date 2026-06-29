@@ -3,7 +3,9 @@
 //! A case is an inspect output directory with a `.git-scv-case.json` sentinel.
 //! The manager never deletes the source repository and never runs target code.
 
-use crate::cli::{CaseCreateArgs, CaseDeleteArgs, CaseIdArgs, CasePruneArgs, InspectArgs};
+use crate::cli::{
+    CaseCreateArgs, CaseDeleteArgs, CaseIdArgs, CaseNextActionArgs, CasePruneArgs, InspectArgs,
+};
 use crate::errors::ScvError;
 use crate::model::{PathPrivacyMode, SensitiveReviewMode};
 use crate::safety;
@@ -39,6 +41,62 @@ struct BriefSummary {
     source_fingerprint_hash: String,
     verdict: String,
     action_required: bool,
+}
+
+#[derive(Deserialize)]
+struct SourcePrivacySummary {
+    path_privacy: SourcePrivacyModeSummary,
+}
+
+#[derive(Deserialize)]
+struct SourcePrivacyModeSummary {
+    mode: String,
+}
+
+#[derive(Deserialize)]
+struct ApprovalGateSummary {
+    approval_required: bool,
+}
+
+#[derive(Deserialize)]
+struct ExecutionGateSummary {
+    approval_required: bool,
+    requires_exact_command: bool,
+}
+
+#[derive(Deserialize)]
+struct GatesSummary {
+    sensitive_raw_review: ApprovalGateSummary,
+    execution_model_input_review: ApprovalGateSummary,
+    execution_command_review: ExecutionGateSummary,
+}
+
+#[derive(Deserialize)]
+struct ReceiptSummary {
+    artifact_manifest_sha256: String,
+    source_fingerprint_hash: String,
+    summarized_to_user: bool,
+    blocked_actions_acknowledged: bool,
+}
+
+struct SourceStatusCheck {
+    expected: String,
+    current: Option<String>,
+    valid: bool,
+}
+
+#[derive(Serialize)]
+struct NextActionResponse {
+    action: String,
+    argv: Vec<String>,
+    allowed: bool,
+    blocked_by: Vec<String>,
+    next_required_steps: Vec<String>,
+    source_status: String,
+    artifact_manifest_sha256: String,
+    artifact_manifest_valid: bool,
+    receipt_valid: bool,
+    safe_claim_made: bool,
 }
 
 struct CaseLock {
@@ -163,7 +221,7 @@ pub fn show(args: CaseIdArgs) -> Result<(), ScvError> {
     let brief: BriefSummary = read_json(&path, "brief.json")?;
     println!("case_id={}", metadata.case_id);
     println!("case_path={}", path.display());
-    println!("source_path={}", metadata.source_path);
+    println!("source_path={}", source_path_for_display(&path, &metadata));
     println!("run_id={}", brief.run_id);
     println!("verdict={}", brief.verdict);
     println!("action_required={}", brief.action_required);
@@ -185,8 +243,8 @@ pub fn brief(args: CaseIdArgs) -> Result<(), ScvError> {
 
 pub fn verify_source(args: CaseIdArgs) -> Result<(), ScvError> {
     let path = checked_case_path(&args.case_id)?;
-    let valid = source_status(&path)?;
-    if valid {
+    let status = source_status(&path)?;
+    if status.valid {
         println!("source_status=valid");
         Ok(())
     } else {
@@ -199,14 +257,150 @@ pub fn verify_source(args: CaseIdArgs) -> Result<(), ScvError> {
 pub fn status(args: CaseIdArgs) -> Result<(), ScvError> {
     let path = checked_case_path(&args.case_id)?;
     let metadata = read_case_metadata_path(&path)?;
-    let valid = source_status(&path)?;
+    let status = source_status(&path)?;
     println!("case_id={}", metadata.case_id);
     println!(
         "source_status={}",
-        if valid { "valid" } else { "stale-source" }
+        if status.valid {
+            "valid"
+        } else {
+            "stale-source"
+        }
     );
     println!("case_path={}", path.display());
-    println!("source_path={}", metadata.source_path);
+    println!("source_path={}", source_path_for_display(&path, &metadata));
+    Ok(())
+}
+
+pub fn next_action(args: CaseNextActionArgs) -> Result<(), ScvError> {
+    let path = checked_case_path(&args.case_id)?;
+    let metadata = read_case_metadata_path(&path)?;
+    let brief: BriefSummary = read_json(&path, "brief.json")?;
+    let gates = read_json::<GatesSummary>(&path, "gates.json").ok();
+
+    let mut blocked_by = Vec::new();
+    let mut next_required_steps = Vec::new();
+    let mut artifact_manifest_valid = false;
+    let mut source_status_label = "unknown".to_string();
+
+    let manifest_path = path.join("artifact_manifest.json");
+    if manifest_path.is_file() {
+        match crate::artifacts::file_sha256(&path, "artifact_manifest.json") {
+            Ok(actual_hash) => {
+                artifact_manifest_valid = actual_hash == brief.artifact_manifest_sha256
+                    && actual_hash == metadata.artifact_manifest_sha256;
+                if !artifact_manifest_valid {
+                    push_unique(&mut blocked_by, "artifact-manifest-mismatch");
+                    push_unique(
+                        &mut next_required_steps,
+                        "re-run git-scv case create after artifact/package change",
+                    );
+                }
+            }
+            Err(_) => {
+                push_unique(&mut blocked_by, "artifact-manifest-hash-failed");
+                push_unique(
+                    &mut next_required_steps,
+                    "re-run git-scv case create after artifact/package change",
+                );
+            }
+        }
+    } else {
+        push_unique(&mut blocked_by, "artifact-manifest-missing");
+        push_unique(
+            &mut next_required_steps,
+            "re-run git-scv case create after artifact/package change",
+        );
+    }
+
+    match source_status_check(&path) {
+        Ok(source_status) => {
+            source_status_label = if source_status.valid {
+                "valid".into()
+            } else {
+                push_unique(&mut blocked_by, "stale-source");
+                push_unique(
+                    &mut next_required_steps,
+                    "git-scv case verify-source <case-id>",
+                );
+                "stale-source".into()
+            };
+        }
+        Err(_) => {
+            push_unique(&mut blocked_by, "source-verify-failed");
+            push_unique(
+                &mut next_required_steps,
+                "git-scv case verify-source <case-id>",
+            );
+        }
+    }
+
+    let receipt_valid = receipt_valid_for_case(&path, &brief);
+    if action_requires_receipt(&args.action) && !receipt_valid {
+        push_unique(&mut blocked_by, "agent-read-receipt-required");
+        push_unique(
+            &mut next_required_steps,
+            "git-scv receipt create <case-path> --agent Hermes --summary-file <summary.md> --summarized-to-user --blocked-actions-acknowledged",
+        );
+    }
+
+    if let Some(gates) = gates.as_ref() {
+        if is_execution_action(&args.action, &args.argv) {
+            if gates.execution_command_review.requires_exact_command && args.argv.is_empty() {
+                push_unique(&mut blocked_by, "exact-command-envelope-required");
+                push_unique(
+                    &mut next_required_steps,
+                    "git-scv case next-action <case-id> --action install --argv npm install",
+                );
+            }
+            if gates.execution_command_review.approval_required {
+                push_unique(&mut blocked_by, "execution-command-review-required");
+                push_unique(
+                    &mut next_required_steps,
+                    "request source-bound exact execution approval before running target commands",
+                );
+            }
+        }
+        if is_model_input_action(&args.action)
+            && gates.execution_model_input_review.approval_required
+        {
+            push_unique(&mut blocked_by, "execution-model-input-review-required");
+            push_unique(
+                &mut next_required_steps,
+                "list execution/model-input candidates and request user review",
+            );
+        }
+        if is_sensitive_raw_action(&args.action) && gates.sensitive_raw_review.approval_required {
+            push_unique(&mut blocked_by, "sensitive-raw-review-required");
+            push_unique(
+                &mut next_required_steps,
+                "request sensitive raw review with exact approved repo-relative paths",
+            );
+        }
+    } else {
+        push_unique(&mut blocked_by, "gates-artifact-missing");
+        push_unique(
+            &mut next_required_steps,
+            "re-run git-scv case create after artifact/package change",
+        );
+    }
+
+    let response = NextActionResponse {
+        action: args.action,
+        argv: args.argv,
+        allowed: blocked_by.is_empty(),
+        blocked_by,
+        next_required_steps,
+        source_status: source_status_label,
+        artifact_manifest_sha256: brief.artifact_manifest_sha256,
+        artifact_manifest_valid,
+        receipt_valid,
+        safe_claim_made: false,
+    };
+    let mut text = serde_json::to_string_pretty(&response)
+        .map_err(|err| ScvError::Inspect(format!("case: next-action JSON 직렬화 실패: {err}")))?;
+    text.push('\n');
+    print!("{text}");
     Ok(())
 }
 
@@ -261,16 +455,27 @@ pub fn doctor() -> Result<(), ScvError> {
     Ok(())
 }
 
-fn source_status(case_path: &Path) -> Result<bool, ScvError> {
+fn source_status(case_path: &Path) -> Result<SourceStatusCheck, ScvError> {
+    let status = source_status_check(case_path)?;
+    println!("expected_source_fingerprint_hash={}", status.expected);
+    if let Some(current) = status.current.as_deref() {
+        println!("current_source_fingerprint_hash={current}");
+    } else {
+        println!("current_source_fingerprint_hash=unknown");
+    }
+    Ok(status)
+}
+
+fn source_status_check(case_path: &Path) -> Result<SourceStatusCheck, ScvError> {
     let metadata = read_case_metadata_path(case_path)?;
     let source_path = PathBuf::from(&metadata.source_path);
     let current = current_source_fingerprint_hash(&source_path, case_path)?;
-    println!(
-        "expected_source_fingerprint_hash={}",
-        metadata.source_fingerprint_hash
-    );
-    println!("current_source_fingerprint_hash={current}");
-    Ok(current == metadata.source_fingerprint_hash)
+    let valid = current == metadata.source_fingerprint_hash;
+    Ok(SourceStatusCheck {
+        expected: metadata.source_fingerprint_hash,
+        current: Some(current),
+        valid,
+    })
 }
 
 fn current_source_fingerprint_hash(
@@ -452,6 +657,77 @@ fn ensure_delete_safe(path: &Path) -> Result<(), ScvError> {
 
 fn read_case_metadata_path(path: &Path) -> Result<CaseMetadata, ScvError> {
     read_json(path, CASE_SENTINEL)
+}
+
+fn source_path_for_display(case_path: &Path, metadata: &CaseMetadata) -> String {
+    let mode = read_json::<SourcePrivacySummary>(case_path, "source.json")
+        .ok()
+        .map(|source| source.path_privacy.mode)
+        .unwrap_or_else(|| "repo-relative".into());
+    if mode == "absolute" {
+        metadata.source_path.clone()
+    } else {
+        "<repo-root>".into()
+    }
+}
+
+fn receipt_valid_for_case(case_path: &Path, brief: &BriefSummary) -> bool {
+    read_json::<ReceiptSummary>(case_path, "agent_receipt.json")
+        .map(|receipt| {
+            receipt.artifact_manifest_sha256 == brief.artifact_manifest_sha256
+                && receipt.source_fingerprint_hash == brief.source_fingerprint_hash
+                && receipt.summarized_to_user
+                && receipt.blocked_actions_acknowledged
+        })
+        .unwrap_or(false)
+}
+
+fn action_requires_receipt(action: &str) -> bool {
+    !matches!(
+        action.to_ascii_lowercase().as_str(),
+        "none" | "show" | "status" | "brief"
+    )
+}
+
+fn is_execution_action(action: &str, argv: &[String]) -> bool {
+    if !argv.is_empty() {
+        return true;
+    }
+    matches!(
+        action.to_ascii_lowercase().as_str(),
+        "install"
+            | "build"
+            | "test"
+            | "run"
+            | "execute"
+            | "npm"
+            | "cargo"
+            | "pip"
+            | "docker"
+            | "make"
+            | "git-commit"
+            | "open-vscode"
+    )
+}
+
+fn is_model_input_action(action: &str) -> bool {
+    matches!(
+        action.to_ascii_lowercase().as_str(),
+        "model-input" | "inspect-slice" | "read-execution-candidate"
+    )
+}
+
+fn is_sensitive_raw_action(action: &str) -> bool {
+    matches!(
+        action.to_ascii_lowercase().as_str(),
+        "sensitive-raw" | "read-sensitive-raw"
+    )
+}
+
+fn push_unique(items: &mut Vec<String>, value: &str) {
+    if !items.iter().any(|item| item == value) {
+        items.push(value.to_string());
+    }
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(dir: &Path, name: &str) -> Result<T, ScvError> {

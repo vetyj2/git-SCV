@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git-SCV supported surfaces",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "capabilities"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "supported_surfaces" },
+    "schema_version": { "const": "2" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["surface", "support", "signals", "raw_values_stored"],
+        "properties": {
+          "surface": { "type": "string" },
+          "support": { "type": "string" },
+          "signals": { "type": "array", "items": { "type": "string" } },
+          "raw_values_stored": { "const": false },
+          "verdict_effect": { "type": "string" }
+        }
+      }
+    }
+  }
+}

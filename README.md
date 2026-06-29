@@ -106,10 +106,17 @@ dependencies.json
 sectors.json
 sensitive.json
 gates.json
+gate_decisions.json
 slices.json
 review.json
 security.json
+supported_surfaces.json
 connection_graph.json
+reachability_scenarios.json
+architecture_map.json
+relation_map.json
+source_landmarks.json
+visualization_index.json
 analysis_plan.json
 cross_unit_analysis.json
 synthesis.json
@@ -117,6 +124,7 @@ followup_plan.json
 agent_receipt.json (created after `git-scv receipt create`)
 report.md
 report.html
+architecture.html
 ```
 
 ## Recommended Use
@@ -130,20 +138,28 @@ repository.
 3. Run `git-scv brief <run-dir>` first and summarize its verdict, required
    actions, model-excluded path count, `artifact_manifest_sha256`,
    `source_fingerprint_hash`, and `agent_read_receipt` before any next action.
-4. Read `report.md` or `report.html`, including the required action list, then
+4. Open `architecture.html` for overview, execution scenarios, script
+   relationships, gates, coverage, source landmarks, and synthesis views.
+5. Read `report.md` or `report.html`, including the required action list, then
    check `source.json`, `inventory.json`, `coverage.json`,
    `findings.json`, `evidence.json`, `dependencies.json`, `sensitive.json`,
-   `gates.json`, `slices.json`, `review.json`, `security.json`,
-   `connection_graph.json`, `analysis_plan.json`, `cross_unit_analysis.json`,
-   `synthesis.json`, and `followup_plan.json` before approving any next action.
-5. Treat `secret-candidate` findings as unresolved review items, not as safe or
+   `gates.json`, `gate_decisions.json`, `slices.json`, `review.json`,
+   `security.json`, `supported_surfaces.json`, `connection_graph.json`,
+   `reachability_scenarios.json`, `architecture_map.json`,
+   `relation_map.json`, `source_landmarks.json`, `visualization_index.json`,
+   `analysis_plan.json`, `cross_unit_analysis.json`, `synthesis.json`, and
+   `followup_plan.json` before approving any next action.
+6. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-6. When using case packages, run `git-scv case verify-source <case-id>` before
+7. When using case packages, run `git-scv case verify-source <case-id>` before
    any install/build/test/run approval request.
-7. Ask for explicit approval before running install, build, test, script, hook,
+8. Use `git-scv case next-action <case-id> --action install --argv <program>
+   <arg>` to check source, manifest, receipt, and gate blockers before asking
+   for execution approval.
+9. Ask for explicit approval before running install, build, test, script, hook,
    binary, workflow, package-manager, or container commands from the inspected
    repository.
-8. For agent-supplied unit analyses, run `git-scv validate-unit <run-dir>
+10. For agent-supplied unit analyses, run `git-scv validate-unit <run-dir>
    unit-analysis/U0001.json` or `git-scv validate-units <run-dir>` before
    treating unit claims as part of the case package. These validators check
    schema shape, evidence refs, and path boundaries; they do not prove semantic
@@ -177,12 +193,7 @@ Optional sensitive-candidate review modes are explicit:
 ## Cleanup And Uninstall
 
 Git-SCV writes artifacts only to the output directories you choose with `--out`.
-After reviewing a report package, remove that directory directly:
-
-```sh
-rm -rf <run-dir>
-rm -rf <snapshot-dir>
-```
+Prefer managed case packages when cleanup safety matters.
 
 Managed case packages can be removed with:
 
@@ -195,7 +206,7 @@ If you use the Hermes harness script, it creates per-case packages under
 `${TMPDIR:-/tmp}/git-scv-cases` by default:
 
 ```sh
-scripts/git-scv-hermes.sh cleanup <case-dir> --ack delete-git-scv-case
+scripts/git-scv-hermes.sh cleanup <case-id> --ack delete-git-scv-case
 scripts/git-scv-hermes.sh cleanup-all --ack delete-all-git-scv-cases
 ```
 

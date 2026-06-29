@@ -169,6 +169,22 @@ fn run_inner(
     let gates = crate::gates::build(&detect_outcome.detections, &sensitive, &run_id);
     let slices = crate::slices::build(&inventory, &sectors, &gates, &run_id);
     let connection_graph = crate::graph::connection_graph(&inventory, &gates, &slices, &run_id);
+    let reachability_scenarios =
+        crate::visualization::reachability_scenarios(&connection_graph, &run_id);
+    let supported_surfaces = crate::visualization::supported_surfaces(&coverage, &run_id);
+    let gate_decisions = crate::visualization::gate_decisions(&source, &run_id);
+    let architecture_map = crate::visualization::architecture_map(
+        &inventory,
+        &coverage,
+        &gates,
+        &dependencies,
+        &sectors,
+        &run_id,
+    );
+    let relation_map = crate::visualization::relation_map(&connection_graph, &run_id);
+    let source_landmarks =
+        crate::visualization::source_landmarks(&sectors, &gates, &sensitive, &run_id);
+    let visualization_index = crate::visualization::visualization_index(&connection_graph, &run_id);
     let analysis_plan = crate::graph::analysis_plan(&inventory, &gates, &sensitive, &run_id);
     let review = crate::review::build(
         &findings,
@@ -181,8 +197,15 @@ fn run_inner(
     let security = crate::review::build_security(&findings, &review, &run_id);
     let cross_unit_analysis =
         crate::synthesis::cross_unit_analysis(&connection_graph, &gates, &review, &run_id);
-    let synthesis =
-        crate::synthesis::synthesis(&review, &coverage, &gates, &cross_unit_analysis, &run_id);
+    let synthesis = crate::synthesis::synthesis(
+        &review,
+        &coverage,
+        &gates,
+        &cross_unit_analysis,
+        &architecture_map,
+        &source_landmarks,
+        &run_id,
+    );
     let followup_plan = crate::synthesis::followup_plan(&review, &cross_unit_analysis, &run_id);
     crate::source::apply_path_privacy(&mut source, &mut inventory, args.path_privacy);
     let finished_at = format_rfc3339(OffsetDateTime::now_utc());
@@ -204,14 +227,23 @@ fn run_inner(
         slices,
         review,
         security,
+        supported_surfaces,
+        gate_decisions,
         connection_graph,
+        reachability_scenarios,
+        architecture_map,
+        relation_map,
+        source_landmarks,
+        visualization_index,
         analysis_plan,
         cross_unit_analysis,
         synthesis,
         followup_plan,
         report_md: String::new(),
+        architecture_html: String::new(),
     };
     data.report_md = crate::report::render(&data);
+    data.architecture_html = crate::visualization::render_architecture_html(&data)?;
 
     if let Err(items) = crate::validate::validate(&data) {
         let err = ScvError::Validation(items.clone());

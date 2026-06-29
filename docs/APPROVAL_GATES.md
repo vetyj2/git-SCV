@@ -20,3 +20,9 @@ execution approval, and a model-input approval is not an execution approval.
 - exact command envelope for execution approvals
 
 Changing the source or artifact manifest invalidates prior approvals.
+
+Use `git-scv case next-action <case-id> --action <kind> --argv <program> <arg>`
+as the mechanical check before an agent asks the user to proceed. It verifies
+the current source fingerprint, artifact manifest hash, agent receipt, exact
+argv envelope, and unresolved gate state. `allowed:false` is not an error; it is
+the expected output while review gates remain unresolved.

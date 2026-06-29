@@ -53,6 +53,8 @@ struct BriefSummary {
     action_required: bool,
     reason_codes: Vec<String>,
     next_step_blocked_until: Vec<String>,
+    visual_outputs: Option<Vec<String>>,
+    do_not_do_yet: Option<Vec<String>>,
     no_exec_statement: String,
 }
 
@@ -138,6 +140,12 @@ pub fn run(args: BriefArgs) -> Result<(), ScvError> {
         brief.next_step_blocked_until.join(",")
     );
     println!("no_exec_statement={}", brief.no_exec_statement);
+    if let Some(outputs) = &brief.visual_outputs {
+        println!("visual_outputs={}", outputs.join(","));
+    }
+    if let Some(commands) = &brief.do_not_do_yet {
+        println!("do_not_do_yet={}", commands.join(","));
+    }
     println!(
         "counts=findings:{},high:{},medium:{},sensitive:{},auto_exec:{},exec_related:{},deep_analysis:{},slices:{},oversized_slices:{}",
         security.counts.findings_total,
@@ -204,6 +212,7 @@ pub fn run(args: BriefArgs) -> Result<(), ScvError> {
     print_paths("limitation", &security.limitations);
     println!("mandatory_agent_rules:");
     println!("- 사용자에게 verdict, action_required, required_actions를 먼저 요약한다.");
+    println!("- architecture.html을 열어 overview, execution scenarios, gates, synthesis view를 확인한다.");
     println!("- 모델 입력은 slices.json에서 default_model_input=true인 파일만 기본 허용한다.");
     println!("- 민감 후보와 실행 후보는 경로를 먼저 보여주고 명시 승인 전에는 원문 입력 또는 실행을 하지 않는다.");
     println!("- 이 브리핑은 전체 보고서 대체물이 아니며 report.md와 원천 JSON 확인을 요구한다.");

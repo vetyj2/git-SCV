@@ -29,5 +29,6 @@ pub mod source;
 pub mod synthesis;
 pub mod unit_analysis;
 pub mod validate;
+pub mod visualization;
 pub mod walk;
 pub mod web_report;

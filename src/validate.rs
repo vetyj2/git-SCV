@@ -469,9 +469,44 @@ fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
             &data.security.run_id,
         ),
         (
+            "supported_surfaces.json",
+            &data.supported_surfaces.schema_version,
+            &data.supported_surfaces.run_id,
+        ),
+        (
+            "gate_decisions.json",
+            &data.gate_decisions.schema_version,
+            &data.gate_decisions.run_id,
+        ),
+        (
             "connection_graph.json",
             &data.connection_graph.schema_version,
             &data.connection_graph.run_id,
+        ),
+        (
+            "reachability_scenarios.json",
+            &data.reachability_scenarios.schema_version,
+            &data.reachability_scenarios.run_id,
+        ),
+        (
+            "architecture_map.json",
+            &data.architecture_map.schema_version,
+            &data.architecture_map.run_id,
+        ),
+        (
+            "relation_map.json",
+            &data.relation_map.schema_version,
+            &data.relation_map.run_id,
+        ),
+        (
+            "source_landmarks.json",
+            &data.source_landmarks.schema_version,
+            &data.source_landmarks.run_id,
+        ),
+        (
+            "visualization_index.json",
+            &data.visualization_index.schema_version,
+            &data.visualization_index.run_id,
         ),
         (
             "analysis_plan.json",
@@ -944,7 +979,7 @@ fn contains_url_query_or_fragment(text: &str) -> bool {
     })
 }
 
-const ARTIFACTS: [&str; 23] = [
+const ARTIFACTS: [&str; 31] = [
     "artifact_manifest.json",
     "brief.json",
     "brief.md",
@@ -961,11 +996,19 @@ const ARTIFACTS: [&str; 23] = [
     "slices.json",
     "review.json",
     "security.json",
+    "supported_surfaces.json",
+    "gate_decisions.json",
     "connection_graph.json",
+    "reachability_scenarios.json",
+    "architecture_map.json",
+    "relation_map.json",
+    "source_landmarks.json",
+    "visualization_index.json",
     "analysis_plan.json",
     "cross_unit_analysis.json",
     "synthesis.json",
     "followup_plan.json",
     "report.md",
     "report.html",
+    "architecture.html",
 ];

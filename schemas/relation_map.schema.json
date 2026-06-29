@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git-SCV relation map",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "relations",
+    "unresolved_relations"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "relation_map" },
+    "schema_version": { "const": "2" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "relation_id",
+          "from",
+          "to",
+          "kind",
+          "confidence",
+          "blocked_by",
+          "unresolved"
+        ],
+        "properties": {
+          "relation_id": { "type": "string" },
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "kind": { "type": "string" },
+          "confidence": { "type": "string" },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "blocked_by": { "type": "array", "items": { "type": "string" } },
+          "unresolved": { "type": "boolean" }
+        }
+      }
+    },
+    "unresolved_relations": { "type": "array" }
+  }
+}

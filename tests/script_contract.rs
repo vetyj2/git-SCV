@@ -233,20 +233,36 @@ fn hermes_script_enforces_cleanup_brief_and_no_target_package_manager_contracts(
     for required in [
         "--ack delete-git-scv-case",
         "--ack delete-all-git-scv-cases",
-        ".git-scv-harness-case",
-        "cleanup requires <case-dir> --ack delete-git-scv-case",
+        "git-scv case \"$@\"",
+        "case_cli create \"$repo\" --path-privacy repo-relative",
+        "case_cli brief \"$case_id\"",
+        "case_cli show \"$case_id\"",
+        "case_cli next-action \"$case_id\" \"$@\"",
+        "case_cli delete \"$case_id\" --ack \"$ack\"",
+        "case_cli prune --all --ack \"$ack\"",
+        "cleanup requires <case-id> --ack delete-git-scv-case",
         "cleanup-all requires --ack delete-all-git-scv-cases",
         "cleanup) cleanup_cmd \"$@\" ;;",
         "cleanup-all) cleanup_all_cmd \"$@\" ;;",
+        "next-action) next_action_cmd \"$@\" ;;",
         "artifact_manifest_json=$run_dir/artifact_manifest.json",
+        "architecture_html=$run_dir/architecture.html",
         "brief_json=$run_dir/brief.json",
         "brief_md=$run_dir/brief.md",
         "gates_json=$run_dir/gates.json",
+        "gate_decisions_json=$run_dir/gate_decisions.json",
+        "supported_surfaces_json=$run_dir/supported_surfaces.json",
         "connection_graph_json=$run_dir/connection_graph.json",
+        "reachability_scenarios_json=$run_dir/reachability_scenarios.json",
+        "architecture_map_json=$run_dir/architecture_map.json",
+        "relation_map_json=$run_dir/relation_map.json",
+        "source_landmarks_json=$run_dir/source_landmarks.json",
+        "visualization_index_json=$run_dir/visualization_index.json",
         "analysis_plan_json=$run_dir/analysis_plan.json",
         "cross_unit_analysis_json=$run_dir/cross_unit_analysis.json",
         "synthesis_json=$run_dir/synthesis.json",
         "followup_plan_json=$run_dir/followup_plan.json",
+        "next_action_command=scripts/git-scv-hermes.sh next-action",
     ] {
         assert!(
             script.contains(required),
@@ -255,8 +271,14 @@ fn hermes_script_enforces_cleanup_brief_and_no_target_package_manager_contracts(
     }
 
     assert!(
-        script.matches("git-scv brief \"$run_dir\"").count() >= 2,
+        script.contains("case_cli brief \"$case_id\"")
+            && script.contains("git-scv brief \"$run_dir\""),
         "inspect and snapshot flows must print the mandatory brief"
+    );
+
+    assert!(
+        !script.contains("rm -rf"),
+        "Hermes wrapper must delegate deletion to git-scv case delete/prune"
     );
 
     for forbidden in [

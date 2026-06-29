@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const ARTIFACTS: [&str; 23] = [
+const ARTIFACTS: [&str; 31] = [
     "artifact_manifest.json",
     "brief.json",
     "brief.md",
@@ -24,16 +24,24 @@ const ARTIFACTS: [&str; 23] = [
     "sectors.json",
     "sensitive.json",
     "gates.json",
+    "gate_decisions.json",
     "slices.json",
     "review.json",
     "security.json",
+    "supported_surfaces.json",
     "connection_graph.json",
+    "reachability_scenarios.json",
+    "architecture_map.json",
+    "relation_map.json",
+    "source_landmarks.json",
+    "visualization_index.json",
     "analysis_plan.json",
     "cross_unit_analysis.json",
     "synthesis.json",
     "followup_plan.json",
     "report.md",
     "report.html",
+    "architecture.html",
 ];
 
 fn run_inspect(repo: &Path, out: &Path) -> std::process::Output {
@@ -119,6 +127,15 @@ fn t06_fixture_full_run() {
                 && item["sha256"].as_str().unwrap().starts_with("sha256:")),
         "{manifest}"
     );
+    assert!(
+        manifest["artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["name"] == "architecture.html"
+                && item["sha256"].as_str().unwrap().starts_with("sha256:")),
+        "{manifest}"
+    );
     let brief = read_json(&out, "brief.json");
     assert_eq!(brief["artifact_kind"], "brief", "{brief}");
     assert_eq!(brief["schema_version"], "2", "{brief}");
@@ -140,9 +157,26 @@ fn t06_fixture_full_run() {
     assert_eq!(brief["may_user_run_install"], false, "{brief}");
     assert_eq!(brief["may_agent_run_without_user"], false, "{brief}");
     assert_eq!(brief["no_exec_statement"], NO_EXEC_SENTENCE, "{brief}");
+    assert!(
+        brief["visual_outputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "architecture.html"),
+        "{brief}"
+    );
+    assert!(
+        brief["actionability"]["next_safe_commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item.as_str().unwrap().contains("case verify-source")),
+        "{brief}"
+    );
     let brief_md = fs::read_to_string(out.join("brief.md")).unwrap();
     assert!(brief_md.contains("artifact_manifest_sha256"), "{brief_md}");
     assert!(brief_md.contains(NO_EXEC_SENTENCE), "{brief_md}");
+    assert!(brief_md.contains("architecture.html"), "{brief_md}");
     let source = read_json(&out, "source.json");
     assert_eq!(source["input"]["raw"], "<repo-root>");
     assert_eq!(source["resolved_path"], "<repo-root>");
@@ -590,6 +624,82 @@ fn t06_fixture_full_run() {
             .any(|item| item["approval_gate"] == "execution-command-review"),
         "{graph}"
     );
+    let reachability = read_json(&out, "reachability_scenarios.json");
+    assert!(
+        reachability["scenarios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["scenario_id"] == "S-install-npm"
+                && item["safe_to_execute_without_user"] == false),
+        "{reachability}"
+    );
+    let supported_surfaces = read_json(&out, "supported_surfaces.json");
+    assert!(
+        supported_surfaces["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["surface"] == "npm/package.json" && item["support"] == "parsed"),
+        "{supported_surfaces}"
+    );
+    let gate_decisions = read_json(&out, "gate_decisions.json");
+    assert_eq!(
+        gate_decisions["expires_on_source_change"], true,
+        "{gate_decisions}"
+    );
+    let architecture_map = read_json(&out, "architecture_map.json");
+    assert_eq!(
+        architecture_map["artifact_kind"], "architecture_map",
+        "{architecture_map}"
+    );
+    assert_eq!(
+        architecture_map["architecture_summary"]["safe_claim_made"],
+        false
+    );
+    assert!(
+        architecture_map["entrypoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["blocked_by"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|gate| gate == "execution-command-review")),
+        "{architecture_map}"
+    );
+    let relation_map = read_json(&out, "relation_map.json");
+    assert_eq!(
+        relation_map["artifact_kind"], "relation_map",
+        "{relation_map}"
+    );
+    assert!(
+        relation_map["relations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["kind"] == "install-lifecycle"),
+        "{relation_map}"
+    );
+    let source_landmarks = read_json(&out, "source_landmarks.json");
+    assert!(
+        source_landmarks["recommended_reading_order"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["path"] == "architecture.html"),
+        "{source_landmarks}"
+    );
+    let visualization_index = read_json(&out, "visualization_index.json");
+    assert_eq!(
+        visualization_index["default_visualization"], "architecture.html",
+        "{visualization_index}"
+    );
+    assert_eq!(
+        visualization_index["privacy"]["target_repo_js_executed"], false,
+        "{visualization_index}"
+    );
     let analysis_plan = read_json(&out, "analysis_plan.json");
     assert!(
         analysis_plan["cross_unit_tasks"]
@@ -597,6 +707,15 @@ fn t06_fixture_full_run() {
             .unwrap()
             .iter()
             .any(|item| item["task_id"] == "X0001"),
+        "{analysis_plan}"
+    );
+    assert!(
+        analysis_plan["cross_unit_tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["task_id"] == "X0002"
+                && item["kind"] == "architecture-visualization-synthesis"),
         "{analysis_plan}"
     );
     let cross = read_json(&out, "cross_unit_analysis.json");
@@ -611,6 +730,14 @@ fn t06_fixture_full_run() {
     );
     let synthesis = read_json(&out, "synthesis.json");
     assert_eq!(synthesis["safe_claim_made"], false, "{synthesis}");
+    assert_eq!(
+        synthesis["architecture_visualization_complete"], true,
+        "{synthesis}"
+    );
+    assert_eq!(
+        synthesis["architecture_synthesis"]["recommended_visualization"], "architecture.html",
+        "{synthesis}"
+    );
     assert_eq!(
         synthesis["cross_unit_analysis_complete"], "minimal-static",
         "{synthesis}"
@@ -646,6 +773,23 @@ fn t06_fixture_full_run() {
     assert!(
         html.contains(NO_EXEC_SENTENCE),
         "HTML 리포트 무실행 문장 누락"
+    );
+    let architecture_html = fs::read_to_string(out.join("architecture.html")).unwrap();
+    assert!(
+        architecture_html.contains("Git-SCV Architecture & Safety Synthesis"),
+        "architecture.html summary panel missing"
+    );
+    assert!(
+        architecture_html.contains("Execution Scenario Reachability"),
+        "architecture.html execution view missing"
+    );
+    assert!(
+        architecture_html.contains("Security Gate Overlay"),
+        "architecture.html gate view missing"
+    );
+    assert!(
+        architecture_html.contains("raw content not included"),
+        "architecture.html must tell users raw target content is excluded"
     );
     assert_eq!(coverage["local_limits"]["max_entries"], 200000);
     assert_eq!(coverage["local_limits"]["max_depth"], 64);
@@ -748,8 +892,14 @@ fn t13_package_script_secret_like_value_is_redacted_from_artifacts() {
         "findings.json",
         "review.json",
         "security.json",
+        "brief.json",
+        "architecture_map.json",
+        "relation_map.json",
+        "source_landmarks.json",
+        "visualization_index.json",
         "report.md",
         "report.html",
+        "architecture.html",
     ] {
         let content = fs::read_to_string(out.join(name)).unwrap();
         assert!(!content.contains(marker), "{name} leaked fake token marker");
@@ -1136,6 +1286,7 @@ fn t10_determinism_across_runs() {
             && **n != "run.json"
             && **n != "report.md"
             && **n != "report.html"
+            && **n != "architecture.html"
     }) {
         let mut a = read_json(&out1, name);
         let mut b = read_json(&out2, name);

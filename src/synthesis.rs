@@ -1,9 +1,10 @@
 //! Minimal cross-unit synthesis from first-party Git-SCV artifacts.
 
 use crate::model::{
-    AggregatePath, AggregateSafetyDiagnosis, ConnectionGraphArtifact, CoverageArtifact,
-    CrossUnitAnalysisArtifact, FollowupItem, FollowupPlanArtifact, GateArtifact, ReviewArtifact,
-    SynergyFinding, SynthesisArtifact, SCHEMA_VERSION,
+    AggregatePath, AggregateSafetyDiagnosis, ArchitectureMapArtifact, ArchitectureSynthesis,
+    ConnectionGraphArtifact, CoverageArtifact, CrossUnitAnalysisArtifact, FollowupItem,
+    FollowupPlanArtifact, GateArtifact, ReviewArtifact, SourceLandmarksArtifact, SynergyFinding,
+    SynthesisArtifact, SCHEMA_VERSION,
 };
 
 pub fn cross_unit_analysis(
@@ -65,6 +66,8 @@ pub fn synthesis(
     coverage: &CoverageArtifact,
     gates: &GateArtifact,
     cross: &CrossUnitAnalysisArtifact,
+    architecture: &ArchitectureMapArtifact,
+    landmarks: &SourceLandmarksArtifact,
     run_id: &str,
 ) -> SynthesisArtifact {
     let required_user_actions = review
@@ -101,10 +104,21 @@ pub fn synthesis(
         safe_claim_made: false,
         unit_analyses_complete: false,
         cross_unit_analysis_complete: "minimal-static".into(),
+        architecture_visualization_complete: true,
         source_fingerprint_verified: false,
         unresolved_edges_count: cross.unresolved_edges.len() as u64,
         conflicts_count: cross.conflicts.len() as u64,
         required_user_actions,
+        architecture_synthesis: ArchitectureSynthesis {
+            detected_shapes: architecture.repo_shape.detected_shapes.clone(),
+            primary_sectors: architecture
+                .sectors
+                .iter()
+                .map(|sector| sector.name.clone())
+                .collect(),
+            recommended_visualization: "architecture.html".into(),
+            source_landmarks_available: !landmarks.recommended_reading_order.is_empty(),
+        },
         aggregate_safety_diagnosis: AggregateSafetyDiagnosis {
             no_blocker_observed_within_scope: review.verdict == "no-blocker-observed",
             blocked_execution_surfaces,

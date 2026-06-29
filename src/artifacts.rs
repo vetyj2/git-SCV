@@ -9,8 +9,9 @@
 
 use crate::errors::ScvError;
 use crate::model::{
-    ArtifactManifest, BriefArtifact, ManifestArtifactEntry, ManifestValidation, PathPrivacyMode,
-    RunArtifact, RunData, ToolInfo, NO_EXEC_SENTENCE,
+    ActionabilityBlocker, ArtifactManifest, BriefActionability, BriefArtifact,
+    ManifestArtifactEntry, ManifestValidation, PathPrivacyMode, RunArtifact, RunData, ToolInfo,
+    NO_EXEC_SENTENCE,
 };
 use crate::safety;
 use serde::Serialize;
@@ -32,13 +33,25 @@ pub fn write_all(out: &Path, data: &RunData) -> Result<(), ScvError> {
     write_json(out, "slices.json", &data.slices)?;
     write_json(out, "review.json", &data.review)?;
     write_json(out, "security.json", &data.security)?;
+    write_json(out, "supported_surfaces.json", &data.supported_surfaces)?;
+    write_json(out, "gate_decisions.json", &data.gate_decisions)?;
     write_json(out, "connection_graph.json", &data.connection_graph)?;
+    write_json(
+        out,
+        "reachability_scenarios.json",
+        &data.reachability_scenarios,
+    )?;
+    write_json(out, "architecture_map.json", &data.architecture_map)?;
+    write_json(out, "relation_map.json", &data.relation_map)?;
+    write_json(out, "source_landmarks.json", &data.source_landmarks)?;
+    write_json(out, "visualization_index.json", &data.visualization_index)?;
     write_json(out, "analysis_plan.json", &data.analysis_plan)?;
     write_json(out, "cross_unit_analysis.json", &data.cross_unit_analysis)?;
     write_json(out, "synthesis.json", &data.synthesis)?;
     write_json(out, "followup_plan.json", &data.followup_plan)?;
     write_text(out, "report.md", &data.report_md)?;
-    write_text(out, "report.html", &crate::web_report::render(data))
+    write_text(out, "report.html", &crate::web_report::render(data))?;
+    write_text(out, "architecture.html", &data.architecture_html)
 }
 
 /// run.json 만 따로 — 단계 실패 시에도 호출되어야 한다(0202, 0203).
@@ -108,7 +121,14 @@ fn artifact_kind_for_name(name: &str) -> &str {
         "slices.json" => "slices",
         "review.json" => "review",
         "security.json" => "security",
+        "supported_surfaces.json" => "supported_surfaces",
+        "gate_decisions.json" => "gate_decisions",
         "connection_graph.json" => "connection_graph",
+        "reachability_scenarios.json" => "reachability_scenarios",
+        "architecture_map.json" => "architecture_map",
+        "relation_map.json" => "relation_map",
+        "source_landmarks.json" => "source_landmarks",
+        "visualization_index.json" => "visualization_index",
         "analysis_plan.json" => "analysis_plan",
         "cross_unit_analysis.json" => "cross_unit_analysis",
         "synthesis.json" => "synthesis",
@@ -207,8 +227,100 @@ fn build_brief_artifact(data: &RunData, artifact_manifest_sha256: String) -> Bri
         required_actions,
         reason_codes: data.review.reason_codes.clone(),
         next_step_blocked_until,
+        actionability: brief_actionability(data),
+        visual_outputs: vec![
+            "architecture.html".into(),
+            "architecture_map.json".into(),
+            "relation_map.json".into(),
+            "source_landmarks.json".into(),
+            "visualization_index.json".into(),
+        ],
+        do_not_do_yet: do_not_do_yet(data),
         no_exec_statement: NO_EXEC_SENTENCE.into(),
     }
+}
+
+fn brief_actionability(data: &RunData) -> BriefActionability {
+    BriefActionability {
+        top_blockers: top_blockers(data),
+        next_safe_commands: vec![
+            "git-scv brief <run-dir>".into(),
+            "git-scv case show <case-id>".into(),
+            "git-scv case verify-source <case-id>".into(),
+            "git-scv case next-action <case-id> --action install --argv npm install".into(),
+            "open architecture.html".into(),
+        ],
+        do_not_do_yet: do_not_do_yet(data),
+    }
+}
+
+fn top_blockers(data: &RunData) -> Vec<ActionabilityBlocker> {
+    let mut blockers = Vec::new();
+    if data.gates.execution_command_review.approval_required {
+        blockers.push(ActionabilityBlocker {
+            id: "B0001".into(),
+            kind: "execution-candidate".into(),
+            summary: "Execution-related repository surfaces are present.".into(),
+            why_it_matters:
+                "Install, build, test, run, hook, workflow, or container actions can reach target-controlled commands.".into(),
+            next_step: "Review gates.json, architecture.html, and request exact command approval only after source verification.".into(),
+            artifact_refs: vec![
+                "brief.json".into(),
+                "gates.json".into(),
+                "architecture.html".into(),
+                "reachability_scenarios.json".into(),
+            ],
+        });
+    }
+    if data.gates.sensitive_raw_review.approval_required {
+        blockers.push(ActionabilityBlocker {
+            id: format!("B{:04}", blockers.len() + 1),
+            kind: "sensitive-candidate".into(),
+            summary: "Sensitive-looking paths are excluded from raw default review.".into(),
+            why_it_matters:
+                "Secrets, credentials, or private configuration may be present and should not be copied into artifacts or model input by default.".into(),
+            next_step: "Review sensitive.json and request path-specific sensitive raw approval only when needed.".into(),
+            artifact_refs: vec!["sensitive.json".into(), "gates.json".into()],
+        });
+    }
+    if data
+        .coverage
+        .capabilities
+        .iter()
+        .any(|capability| capability.verdict_effect.is_some())
+    {
+        blockers.push(ActionabilityBlocker {
+            id: format!("B{:04}", blockers.len() + 1),
+            kind: "insufficient-coverage".into(),
+            summary: "Unsupported or only name-detected surfaces limit the conclusion.".into(),
+            why_it_matters:
+                "Git-SCV cannot claim no blocker observed when execution-related surfaces are not structurally parsed.".into(),
+            next_step: "Review coverage.json, supported_surfaces.json, and the Coverage view in architecture.html.".into(),
+            artifact_refs: vec![
+                "coverage.json".into(),
+                "supported_surfaces.json".into(),
+                "architecture.html".into(),
+            ],
+        });
+    }
+    blockers
+}
+
+fn do_not_do_yet(data: &RunData) -> Vec<String> {
+    let mut commands = Vec::new();
+    if data.gates.execution_command_review.approval_required {
+        commands.extend([
+            "npm install".into(),
+            "cargo build".into(),
+            "docker build".into(),
+            "make".into(),
+        ]);
+    }
+    if commands.is_empty() {
+        commands
+            .push("Do not run target repository commands without explicit user approval.".into());
+    }
+    commands
 }
 
 fn render_brief_markdown(brief: &BriefArtifact) -> String {
@@ -236,6 +348,11 @@ fn render_brief_markdown(brief: &BriefArtifact) -> String {
 - required_actions: {required_actions}\n\
 - reason_codes: {reason_codes}\n\
 - next_step_blocked_until: {next_step_blocked_until}\n\n\
+## actionability\n\n\
+- top_blockers: {top_blockers}\n\
+- next_safe_commands: {next_safe_commands}\n\
+- do_not_do_yet: {do_not_do_yet}\n\
+- visual_outputs: {visual_outputs}\n\n\
 ## counts\n\n\
 - findings_total: {findings_total}\n\
 - sensitive_candidates: {sensitive_candidates}\n\
@@ -257,6 +374,10 @@ fn render_brief_markdown(brief: &BriefArtifact) -> String {
         required_actions = required_actions,
         reason_codes = reason_codes,
         next_step_blocked_until = brief.next_step_blocked_until.join(", "),
+        top_blockers = brief.actionability.top_blockers.len(),
+        next_safe_commands = brief.actionability.next_safe_commands.join(", "),
+        do_not_do_yet = brief.do_not_do_yet.join(", "),
+        visual_outputs = brief.visual_outputs.join(", "),
         findings_total = brief.counts.findings_total,
         sensitive_candidates = brief.counts.sensitive_candidates,
         automatic_execution_candidates = brief.counts.automatic_execution_candidates,
@@ -299,7 +420,7 @@ fn path_privacy_label(mode: PathPrivacyMode) -> &'static str {
     }
 }
 
-pub const MANIFEST_HASHED_ARTIFACTS: [&str; 20] = [
+pub const MANIFEST_HASHED_ARTIFACTS: [&str; 28] = [
     "run.json",
     "source.json",
     "inventory.json",
@@ -313,11 +434,19 @@ pub const MANIFEST_HASHED_ARTIFACTS: [&str; 20] = [
     "slices.json",
     "review.json",
     "security.json",
+    "supported_surfaces.json",
+    "gate_decisions.json",
     "connection_graph.json",
+    "reachability_scenarios.json",
+    "architecture_map.json",
+    "relation_map.json",
+    "source_landmarks.json",
+    "visualization_index.json",
     "analysis_plan.json",
     "cross_unit_analysis.json",
     "synthesis.json",
     "followup_plan.json",
     "report.md",
     "report.html",
+    "architecture.html",
 ];

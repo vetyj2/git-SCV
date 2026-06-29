@@ -772,7 +772,27 @@ pub struct BriefArtifact {
     pub required_actions: Vec<String>,
     pub reason_codes: Vec<String>,
     pub next_step_blocked_until: Vec<String>,
+    pub actionability: BriefActionability,
+    pub visual_outputs: Vec<String>,
+    pub do_not_do_yet: Vec<String>,
     pub no_exec_statement: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct BriefActionability {
+    pub top_blockers: Vec<ActionabilityBlocker>,
+    pub next_safe_commands: Vec<String>,
+    pub do_not_do_yet: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ActionabilityBlocker {
+    pub id: String,
+    pub kind: String,
+    pub summary: String,
+    pub why_it_matters: String,
+    pub next_step: String,
+    pub artifact_refs: Vec<String>,
 }
 
 // ------------------------------------------------------- agent_receipt.json
@@ -841,6 +861,189 @@ pub struct ConnectionGraphArtifact {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
     pub scenarios: Vec<ReachabilityScenario>,
+}
+
+// ----------------------------------------------------- supported_surfaces.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SupportedSurfacesArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub capabilities: Vec<SurfaceCapability>,
+    pub note: String,
+}
+
+// --------------------------------------------------------- gate_decisions.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GateDecisionArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub source_fingerprint_hash: String,
+    pub artifact_manifest_sha256_required: bool,
+    pub expires_on_source_change: bool,
+    pub decisions: Vec<GateDecision>,
+    pub note: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GateDecision {
+    pub gate_decision_id: String,
+    pub decision_kind: String,
+    pub approved_repo_relative_path: Option<String>,
+    pub path_metadata_hash_at_approval: Option<String>,
+    pub execution_request: Option<ExecutionRequest>,
+    pub ack: String,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ExecutionRequest {
+    pub argv: Vec<String>,
+    pub shell: bool,
+    pub cwd: String,
+    pub env_policy: String,
+    pub network: String,
+    pub writes_to_repo: String,
+    pub source_fingerprint_hash: String,
+    pub artifact_manifest_sha256: String,
+    pub requires_user_approval: bool,
+}
+
+// ------------------------------------------------ reachability_scenarios.json
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ReachabilityScenariosArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub scenarios: Vec<ReachabilityScenario>,
+    pub note: String,
+}
+
+// --------------------------------------------------------- architecture maps
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ArchitectureMapArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub repo_shape: RepoShape,
+    pub sectors: Vec<ArchitectureSector>,
+    pub entrypoints: Vec<ArchitectureEntrypoint>,
+    pub architecture_summary: ArchitectureSummary,
+    pub visualization_recommendations: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct RepoShape {
+    pub detected_shapes: Vec<String>,
+    pub confidence: String,
+    pub limitations: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ArchitectureSector {
+    pub sector_id: String,
+    pub name: String,
+    pub paths: Vec<String>,
+    pub primary_role: String,
+    pub model_input_status: String,
+    pub gate_status: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ArchitectureEntrypoint {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub path: String,
+    pub reachable_under: Vec<String>,
+    pub blocked_by: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ArchitectureSummary {
+    pub human_summary: String,
+    pub safe_claim_made: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct RelationMapArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub relations: Vec<Relation>,
+    pub unresolved_relations: Vec<UnresolvedRelation>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Relation {
+    pub relation_id: String,
+    pub from: String,
+    pub to: String,
+    pub kind: String,
+    pub confidence: String,
+    pub evidence_refs: Vec<String>,
+    pub blocked_by: Vec<String>,
+    pub unresolved: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct UnresolvedRelation {
+    pub relation_id: String,
+    pub reason: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SourceLandmarksArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub recommended_reading_order: Vec<SourceLandmark>,
+    pub do_not_read_by_default: Vec<SourceLandmarkGuard>,
+    pub gate_before_reading: Vec<SourceLandmarkGuard>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SourceLandmark {
+    pub rank: u64,
+    pub path: String,
+    pub why: String,
+    pub model_input_status: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SourceLandmarkGuard {
+    pub path: String,
+    pub reason: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct VisualizationIndexArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub default_visualization: String,
+    pub views: Vec<VisualizationView>,
+    pub privacy: VisualizationPrivacy,
+    pub graph_limits: VisualizationGraphLimits,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct VisualizationView {
+    pub view_id: String,
+    pub title: String,
+    pub source_artifacts: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct VisualizationPrivacy {
+    pub raw_sensitive_content_included: bool,
+    pub target_repo_js_executed: bool,
+    pub external_network_required: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct VisualizationGraphLimits {
+    pub max_nodes: u64,
+    pub max_edges: u64,
+    pub truncated: bool,
 }
 
 // ---------------------------------------------------------- analysis_plan.json
@@ -919,11 +1122,21 @@ pub struct SynthesisArtifact {
     pub safe_claim_made: bool,
     pub unit_analyses_complete: bool,
     pub cross_unit_analysis_complete: String,
+    pub architecture_visualization_complete: bool,
     pub source_fingerprint_verified: bool,
     pub unresolved_edges_count: u64,
     pub conflicts_count: u64,
     pub required_user_actions: Vec<String>,
+    pub architecture_synthesis: ArchitectureSynthesis,
     pub aggregate_safety_diagnosis: AggregateSafetyDiagnosis,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ArchitectureSynthesis {
+    pub detected_shapes: Vec<String>,
+    pub primary_sectors: Vec<String>,
+    pub recommended_visualization: String,
+    pub source_landmarks_available: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -1010,10 +1223,18 @@ pub struct RunData {
     pub slices: SliceArtifact,
     pub review: ReviewArtifact,
     pub security: SecurityArtifact,
+    pub supported_surfaces: SupportedSurfacesArtifact,
+    pub gate_decisions: GateDecisionArtifact,
     pub connection_graph: ConnectionGraphArtifact,
+    pub reachability_scenarios: ReachabilityScenariosArtifact,
+    pub architecture_map: ArchitectureMapArtifact,
+    pub relation_map: RelationMapArtifact,
+    pub source_landmarks: SourceLandmarksArtifact,
+    pub visualization_index: VisualizationIndexArtifact,
     pub analysis_plan: AnalysisPlanArtifact,
     pub cross_unit_analysis: CrossUnitAnalysisArtifact,
     pub synthesis: SynthesisArtifact,
     pub followup_plan: FollowupPlanArtifact,
     pub report_md: String,
+    pub architecture_html: String,
 }

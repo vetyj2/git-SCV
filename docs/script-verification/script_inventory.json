@@ -29,6 +29,9 @@
           "stage": "SV1",
           "functions": [
             "case_root",
+            "case_cli",
+            "case_id_from_output",
+            "case_id_from_arg",
             "sanitize_label",
             "new_case_dir",
             "run_dir_for_case",
@@ -40,7 +43,7 @@
             "show",
             "list"
           ],
-          "responsibility": "Local case root creation, case directory naming, run artifact discovery, artifact path printing, and listing."
+          "responsibility": "Local case root selection, Rust case CLI delegation, legacy snapshot run artifact discovery, artifact path printing, and listing."
         },
         {
           "module_id": "M03-INSTALL-UPDATE",
@@ -77,13 +80,15 @@
           "stage": "SV3",
           "functions": [
             "brief_cmd",
+            "next_action_cmd",
             "print_case_info",
             "run_dir_for_case"
           ],
           "commands": [
-            "brief"
+            "brief",
+            "next-action"
           ],
-          "responsibility": "Resolve a case directory to run artifacts and expose the first-class brief and review artifacts."
+          "responsibility": "Delegate brief and next-action checks to Rust case CLI and expose first-class brief, architecture, gate, and review artifacts."
         },
         {
           "module_id": "M06-CLEANUP-SAFETY",
@@ -96,7 +101,7 @@
             "cleanup",
             "cleanup-all"
           ],
-          "responsibility": "Delete only harness-owned case packages with exact acknowledgement, root containment, and sentinel checks."
+          "responsibility": "Delegate deletion to Rust case delete/prune with exact acknowledgement and case sentinel checks."
         }
       ]
     }

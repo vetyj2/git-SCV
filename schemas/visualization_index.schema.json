@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git-SCV visualization index",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "default_visualization",
+    "views",
+    "privacy",
+    "graph_limits"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "visualization_index" },
+    "schema_version": { "const": "2" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "default_visualization": { "const": "architecture.html" },
+    "views": { "type": "array" },
+    "privacy": {
+      "type": "object",
+      "required": [
+        "raw_sensitive_content_included",
+        "target_repo_js_executed",
+        "external_network_required"
+      ],
+      "properties": {
+        "raw_sensitive_content_included": { "const": false },
+        "target_repo_js_executed": { "const": false },
+        "external_network_required": { "const": false }
+      }
+    },
+    "graph_limits": {
+      "type": "object",
+      "required": ["mode", "max_nodes", "max_edges", "truncated"],
+      "properties": {
+        "mode": { "type": "string" },
+        "max_nodes": { "type": "integer" },
+        "max_edges": { "type": "integer" },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  }
+}

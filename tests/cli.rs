@@ -17,6 +17,7 @@ fn help_contains_no_exec_sentence() {
         vec!["receipt", "create", "--help"],
         vec!["case", "--help"],
         vec!["case", "create", "--help"],
+        vec!["case", "next-action", "--help"],
         vec!["validate-unit", "--help"],
         vec!["validate-units", "--help"],
         vec!["synthesize", "--help"],
@@ -800,6 +801,15 @@ fn t04_case_cli_manages_case_package_and_verifies_source() {
         "{}",
         String::from_utf8_lossy(&shown.stdout)
     );
+    let shown_stdout = String::from_utf8_lossy(&shown.stdout);
+    assert!(
+        shown_stdout.contains("source_path=<repo-root>"),
+        "{shown_stdout}"
+    );
+    assert!(
+        !shown_stdout.contains(repo.to_string_lossy().as_ref()),
+        "case show must not leak the absolute source path by default: {shown_stdout}"
+    );
 
     let brief = Command::new(common::bin())
         .args(["case", "brief", &case_id])
@@ -830,6 +840,43 @@ fn t04_case_cli_manages_case_package_and_verifies_source() {
         String::from_utf8_lossy(&verified.stdout)
     );
 
+    let blocked_next = Command::new(common::bin())
+        .args([
+            "case",
+            "next-action",
+            &case_id,
+            "--action",
+            "install",
+            "--argv",
+            "npm",
+            "install",
+        ])
+        .env("GIT_SCV_CASE_ROOT", &case_root)
+        .output()
+        .unwrap();
+    assert_eq!(
+        blocked_next.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&blocked_next.stderr)
+    );
+    let next_json: serde_json::Value =
+        serde_json::from_slice(&blocked_next.stdout).expect("next-action should emit JSON");
+    assert_eq!(next_json["allowed"], false, "{next_json}");
+    assert_eq!(next_json["artifact_manifest_valid"], true, "{next_json}");
+    assert_eq!(next_json["source_status"], "valid", "{next_json}");
+    let blocked_by: Vec<&str> = next_json["blocked_by"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item.as_str().unwrap())
+        .collect();
+    assert!(
+        blocked_by.contains(&"agent-read-receipt-required")
+            && blocked_by.contains(&"execution-command-review-required"),
+        "{next_json}"
+    );
+
     fs::write(repo.join("new-file-after-case.txt"), "changed\n").unwrap();
     let stale = Command::new(common::bin())
         .args(["case", "verify-source", &case_id])
@@ -852,6 +899,48 @@ fn t04_case_cli_manages_case_package_and_verifies_source() {
         String::from_utf8_lossy(&status.stdout).contains("source_status=stale-source"),
         "{}",
         String::from_utf8_lossy(&status.stdout)
+    );
+    let status_stdout = String::from_utf8_lossy(&status.stdout);
+    assert!(
+        status_stdout.contains("source_path=<repo-root>"),
+        "{status_stdout}"
+    );
+    assert!(
+        !status_stdout.contains(repo.to_string_lossy().as_ref()),
+        "case status must not leak the absolute source path by default: {status_stdout}"
+    );
+
+    let stale_next = Command::new(common::bin())
+        .args([
+            "case",
+            "next-action",
+            &case_id,
+            "--action",
+            "install",
+            "--argv",
+            "npm",
+            "install",
+        ])
+        .env("GIT_SCV_CASE_ROOT", &case_root)
+        .output()
+        .unwrap();
+    assert_eq!(stale_next.status.code(), Some(0));
+    let stale_next_json: serde_json::Value =
+        serde_json::from_slice(&stale_next.stdout).expect("next-action should emit JSON");
+    assert_eq!(stale_next_json["allowed"], false, "{stale_next_json}");
+    assert_eq!(
+        stale_next_json["source_status"], "stale-source",
+        "{stale_next_json}"
+    );
+    let stale_blocked_by: Vec<&str> = stale_next_json["blocked_by"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item.as_str().unwrap())
+        .collect();
+    assert!(
+        stale_blocked_by.contains(&"stale-source"),
+        "{stale_next_json}"
     );
 
     let blocked_delete = Command::new(common::bin())

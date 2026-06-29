@@ -47,33 +47,51 @@ git-scv inspect <repo-path> --out <run-dir>
    열람 여부를 확인한다. 원문은 산출물에 저장되지 않는다.
 12. `gates.json` — 모델 입력 전 민감 후보 원문 승인 게이트와
    설치·빌드·테스트·실행 전 자동 실행 후보 승인 게이트를 확인한다.
-13. `slices.json` — 본문을 열기 전, 어떤 경로 묶음을 어떤 순서로 읽을지
+13. `gate_decisions.json` — source/artifact/action-bound 승인 결정 envelope.
+    자동 승인은 생성되지 않는다.
+14. `slices.json` — 본문을 열기 전, 어떤 경로 묶음을 어떤 순서로 읽을지
     확인한다. 이 파일은 경로·크기·추정 토큰·언어 힌트·승인 플래그만
     담고 본문은 담지 않는다.
-14. `review.json` — 판정, 집계, 기본 모델 입력 제외 경로, 필요한 후속
+15. `review.json` — 판정, 집계, 기본 모델 입력 제외 경로, 필요한 후속
     액션을 확인한다.
-15. `security.json` — 다른 도구가 먼저 읽기 쉬운 보안 요약. 판정, 필수
+16. `security.json` — 다른 도구가 먼저 읽기 쉬운 보안 요약. 판정, 필수
     액션, 제외 경로, 한계, 원천 산출물 참조를 확인하되 안전 보증으로
     취급하지 않는다.
-16. `connection_graph.json` — 사용자 행동이 어떤 실행/민감/모델입력 표면과
+17. `supported_surfaces.json` — parsed/name-detected/unsupported/parse-failed
+    surface matrix를 확인한다.
+18. `connection_graph.json` — 사용자 행동이 어떤 실행/민감/모델입력 표면과
     gate에 닿는지 확인한다.
-17. `analysis_plan.json` — unit별 allowed/forbidden path와 cross-unit task를
+19. `reachability_scenarios.json` — install/build/test/run/open-editor/hook
+    행동별 reachable node와 blocked_by gate를 확인한다.
+20. `architecture_map.json` — repo shape, sector, entrypoint, architecture
+    summary를 확인한다.
+21. `relation_map.json` — scenario, script, manifest, config, gate 사이 관계를
     확인한다.
-18. `cross_unit_analysis.json` — 조합 위험, unresolved edge, follow-up 필요
+22. `source_landmarks.json` — 권장 읽기 순서, 기본 미열람 경로, gate-before-reading
+    경로를 확인한다.
+23. `visualization_index.json` — `architecture.html` view와 privacy 계약을
+    확인한다.
+24. `analysis_plan.json` — unit별 allowed/forbidden path와 cross-unit task를
+    확인한다.
+25. `cross_unit_analysis.json` — 조합 위험, unresolved edge, follow-up 필요
     여부를 확인한다.
-19. `synthesis.json` — 전체 진단과 결론 불가능 범위를 확인한다.
-20. `followup_plan.json` — 다음 라운드 질문과 필요한 사용자 승인을 확인한다.
-21. `agent_receipt.json` — receipt가 생성된 경우, agent가 어떤 manifest와
+26. `synthesis.json` — 전체 진단과 결론 불가능 범위를 확인한다.
+27. `followup_plan.json` — 다음 라운드 질문과 필요한 사용자 승인을 확인한다.
+28. `agent_receipt.json` — receipt가 생성된 경우, agent가 어떤 manifest와
     source fingerprint에 묶인 artifact set을 읽었다고 기록했는지 확인한다.
-22. `report.md` — 사용자에게 보여줄 요약. 필수 액션 목록을 먼저 확인한 뒤
+29. `report.md` — 사용자에게 보여줄 요약. 필수 액션 목록을 먼저 확인한 뒤
     그대로 인용해도 된다.
-23. `report.html` — 브라우저에서 확인할 때 쓰는 사람용 요약. 필요한 ack
+30. `report.html` — 브라우저에서 확인할 때 쓰는 사람용 요약. 필요한 ack
     문구가 있는 필수 액션은 승인 게이트 절에 표시된다.
+31. `architecture.html` — repo 구조, 실행 시나리오, script 관계, gate,
+    coverage, source landmark, synthesis를 보는 기본 동적 HTML. target repo
+    HTML/JS는 실행하지 않는다.
 
-에이전트가 사람에게 먼저 보여줄 수 있는 요약은 `report.md` 또는
-`report.html`이다. 단, 후속 자동 판단은 반드시 `review.json.required_actions`,
-`security.json.references`, `gates.json`, `slices.json`의 구조화된 JSON 값을
-기준으로 한다.
+에이전트가 사람에게 먼저 보여줄 수 있는 요약은 `brief.md`,
+`architecture.html`, `report.md`, `report.html`이다. 단, 후속 자동 판단은
+반드시 `review.json.required_actions`, `security.json.references`,
+`gates.json`, `slices.json`, `source_landmarks.json`, `visualization_index.json`의
+구조화된 JSON 값을 기준으로 한다.
 
 `review.json.required_actions`의 id는 아래 값들을 포함할 수 있다.
 

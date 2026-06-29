@@ -15,9 +15,14 @@ the current tree.
 - P1.5 utility layer: dependency provenance minimum, prompt-injection surface
   detection, and supported surface/capability matrix.
 - P3/P3.5/P4 orchestration layer: connection graph, reachability scenarios,
-  analysis plan, minimal cross-unit analysis, synthesis, follow-up plan, and
-  `validate-unit` / `validate-units` / `synthesize` / `followup-plan` /
-  `validate-followup` CLI commands.
+  architecture map, relation map, source landmarks, visualization index,
+  default `architecture.html`, analysis plan, minimal cross-unit analysis,
+  synthesis, follow-up plan, and `validate-unit` / `validate-units` /
+  `synthesize` / `followup-plan` / `validate-followup` CLI commands.
+- Actionability layer: `brief.json`/`brief.md` point to `architecture.html`,
+  record next safe commands and do-not-do-yet commands, and
+  `git-scv case next-action` checks source, manifest, receipt, exact argv, and
+  gate blockers before any next action.
 
 ## Parser And Package-Manager Boundary
 
@@ -32,7 +37,7 @@ The current parser expansion is intentionally conservative.
   `unsupported-surface-name-detected` to review reason codes. Git-SCV does not
   claim `no-blocker-observed` for those cases.
 - Raw command bodies, raw dependency specs, tokenized URLs, and sensitive raw
-  content are not stored.
+  content are not stored. The same contract applies to `architecture.html`.
 
 P5 package-manager/download-path expansion remains a documented future layer in
 `docs/FUTURE_PACKAGE_MANAGERS.md`. The implemented contract keeps the P5
@@ -48,6 +53,7 @@ Latest verification run:
 - `cargo clippy --all-targets` (exit code 0; existing warning-level lint output
   remains for test `unwrap`/`expect` usage and a few long helper signatures)
 - `jq empty schemas/*.json`
+- `bash -n scripts/git-scv-hermes.sh`
 - `cargo package --locked --allow-dirty`
 
 ## Non-Claims

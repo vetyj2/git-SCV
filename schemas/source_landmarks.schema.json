@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git-SCV source landmarks",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "recommended_reading_order",
+    "do_not_read_by_default",
+    "gate_before_reading"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "source_landmarks" },
+    "schema_version": { "const": "2" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "recommended_reading_order": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rank", "path", "why"],
+        "properties": {
+          "rank": { "type": "integer", "minimum": 1 },
+          "path": { "type": "string" },
+          "why": { "type": "string" },
+          "model_input_status": { "type": "string" }
+        }
+      }
+    },
+    "do_not_read_by_default": { "type": "array" },
+    "gate_before_reading": { "type": "array" }
+  }
+}

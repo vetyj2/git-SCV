@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git-SCV architecture map",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "repo_shape",
+    "sectors",
+    "entrypoints",
+    "architecture_summary"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "architecture_map" },
+    "schema_version": { "const": "2" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "repo_shape": {
+      "type": "object",
+      "required": ["detected_shapes", "confidence", "limitations"],
+      "properties": {
+        "detected_shapes": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "string" },
+        "limitations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "sectors": { "type": "array" },
+    "entrypoints": { "type": "array" },
+    "architecture_summary": {
+      "type": "object",
+      "required": ["human_summary", "safe_claim_made"],
+      "properties": {
+        "human_summary": { "type": "string" },
+        "safe_claim_made": { "const": false }
+      }
+    },
+    "visualization_recommendations": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
