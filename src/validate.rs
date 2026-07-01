@@ -932,7 +932,7 @@ pub fn verify_outputs(out_dir: &Path) -> Result<(), Vec<String>> {
 
 fn artifact_leak_errors(out_dir: &Path) -> Vec<String> {
     let mut errors = Vec::new();
-    for name in ARTIFACTS {
+    for name in ARTIFACTS.into_iter().chain(OPTIONAL_ARTIFACTS) {
         let path = out_dir.join(name);
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
@@ -1046,4 +1046,10 @@ const ARTIFACTS: [&str; 36] = [
     "report.md",
     "report.html",
     "architecture.html",
+];
+
+const OPTIONAL_ARTIFACTS: [&str; 3] = [
+    "source_acquisition.json",
+    "worker_backend.json",
+    "analysis_followup_jobs.jsonl",
 ];

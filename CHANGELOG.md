@@ -1,7 +1,38 @@
 # Changelog
 
+## 0.3.3 - 2026-07-02
+
+- Added arrow-key quick-start selection for the short `git-scv
+  <repo-path-or-github-url>` entrypoint:
+  - Up/Down and `j`/`k` move through the three choices;
+  - Enter confirms the highlighted choice;
+  - `1`-`3` direct selection and numbered-prompt fallback remain supported.
+- Documented the interactive selector as an RC acceptance requirement and RC
+  blocker if it regresses.
+- Added a narrow terminal `termios` safety note to the clippy policy: the raw
+  terminal boundary reads only current stdin key bytes, restores terminal mode
+  on drop, and does not read auth/token files or execute target repository
+  commands.
+- Updated public release/install/version references for the v0.3.3 release
+  line.
+
 ## 0.3.2 - 2026-07-02
 
+- Real-use feedback catch-up:
+  - renamed URL-only GitHub flow to `web-metadata-preflight` and made it report
+    `code_body_analysis:false`, `worker_started:false`, and
+    `semantic_analysis_complete:false`;
+  - added `pinned-snapshot` acquisition for GitHub URLs, with commit pinning and
+    self-observed SHA-256 recorded separately from strict external digest
+    verification;
+  - aligned worker prompt, schema, and validator contracts so Codex/Claude are
+    asked for the same fields Git-SCV requires;
+  - added worker format-repair retry, attempt-start/finish receipts, and
+    non-empty failure receipts;
+  - propagated qualitative digests, map deltas, relation candidates, and
+    follow-up jobs into `analysis_map.json` and `final_user_report.md/html`;
+  - expanded terminal progress with current job, path, queued/failed/blocked
+    counts, and next safe command.
 - Added short guided entrypoints: `git-scv init`, `git-scv doctor`, and
   `git-scv <repo-path-or-github-url>`. The default non-interactive quick flow
   performs a pre-install manual check and avoids paid worker invocation unless

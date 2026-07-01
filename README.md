@@ -20,9 +20,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Install Git-SCV from GitHub:
 
 ```sh
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked
 cargo install --git https://github.com/vetyj2/git-SCV --rev <commit-sha> --locked
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked --force
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked --force
 git-scv --version
 ```
 
@@ -52,6 +52,8 @@ git-scv doctor
 git-scv <repo-path-or-github-url>
 git-scv scan <repo-path> --goal install --worker codex
 git-scv scan <repo-path> --goal install --worker manual
+git-scv scan https://github.com/<owner>/<repo> --mode web-metadata-preflight
+git-scv scan https://github.com/<owner>/<repo> --mode pinned-snapshot --worker codex
 git-scv worker doctor --backend codex
 git-scv review <repo-path> --goal install
 git-scv review https://github.com/<owner>/<repo> --goal install
@@ -73,6 +75,12 @@ git-scv github plan https://github.com/<owner>/<repo> --ref <sha-or-tag> --out <
 git-scv clean <run-dir>
 ```
 
+The terminal is the compact control surface, not the detailed report. During
+long scans Git-SCV shows the current stage, progress, current job/path, blocked
+or failed counts, and the next safe command. Detailed evidence, architecture
+relationships, and repo-owner feedback stay in `brief.md`,
+`final_user_report.md`, and `architecture.html`.
+
 Run `git-scv init` once before full screening. Git-SCV is Codex-first by
 default in its recommended workflow, but it does not read Codex OAuth/token
 files. The init/doctor output reminds users that the worker CLI's current model
@@ -87,9 +95,20 @@ The shortest preflight entry is:
 git-scv https://github.com/<owner>/<repo>
 ```
 
-For GitHub URLs this starts metadata-only planning and then asks for pinned
-source acquisition before full screening. For local directories it starts the
-pre-install check path without invoking a paid worker by default.
+In an interactive terminal, the short entry opens a three-option quick-start
+menu. Use Up/Down or `j`/`k` to move, Enter to confirm, or `1`-`3` to choose
+directly. Non-interactive runs keep the safe default and never start a paid
+worker implicitly.
+
+For GitHub URLs this starts `web-metadata-preflight` in non-interactive use:
+Git-SCV reads GitHub tree metadata only, reports `code_body_analysis=false` and
+`worker_started=false`, and does not claim semantic code analysis completion.
+Use `--mode pinned-snapshot` to resolve a GitHub ref to a commit SHA, download
+that commit archive, record a self-observed SHA-256, and continue into the
+normal source-bound scan workflow. This is not independent external checksum
+verification; strict verification remains the `snapshot --sha256 <hex>` path.
+For local directories the short command starts the local preflight path without
+invoking a paid worker by default.
 
 `<repo-path>` must be a local directory for full slice review. `review` accepts
 GitHub repository URLs only for a no-exec metadata plan; it does not fetch file
@@ -113,13 +132,16 @@ and extracted source path.
 For detailed command examples, sensitive-candidate modes, and artifact reading
 order, see [USAGE.md](USAGE.md).
 
-`scan` is the one-touch local entrypoint. It runs no-exec preflight, writes the
-work order, creates source-bound analysis jobs, optionally invokes a configured
+`scan` is the one-touch entrypoint. It runs no-exec preflight, writes the work
+order, creates source-bound analysis jobs, optionally invokes a configured
 Codex/Claude worker CLI one slice at a time, validates each unit-analysis
-result, and creates the final user report only after runnable jobs are
-completed. `review` remains the split/manual entrypoint for agents that want to
-claim/export/complete jobs themselves. `inspect`, `snapshot`, and `github plan`
-remain core preflight commands.
+result, retries one formatting/schema error by default, writes non-empty
+attempt receipts, and creates the final user report only after runnable jobs
+are completed. Qualitative digests, map deltas, relation candidates, and
+follow-up jobs from validated unit analyses are folded into `analysis_map.json`
+and `final_user_report.md/html`. `review` remains the split/manual entrypoint
+for agents that want to claim/export/complete jobs themselves. `inspect`,
+`snapshot`, and `github plan` remain core preflight commands.
 
 Git-SCV never runs target repository package managers, shells, scripts, hooks,
 binaries, workflows, containers, or install commands. The only process-spawning
@@ -184,12 +206,14 @@ analysis_inputs.jsonl
 analysis_state.json
 analysis_events.jsonl
 llm_backend.json
+source_acquisition.json (created by `git-scv scan --mode pinned-snapshot`)
 worker_backend.json (created by `git-scv scan --worker <backend>`)
 gpt_work_order.json
 gpt_work_order.md
 work_order_binding.json
 analysis_jobs.jsonl
 codex_invocation_receipt.jsonl
+analysis_followup_jobs.jsonl
 review.json
 security.json
 supported_surfaces.json
@@ -322,7 +346,7 @@ configuration.
 
 ## Status
 
-v0.3.2 uses the schema-breaking artifact-contract-v2 release line. v0.2 artifacts are
+v0.3.3 uses the schema-breaking artifact-contract-v2 release line. v0.2 artifacts are
 not migrated; re-run inspection. Git-SCV does not claim repositories are safe,
 clean, trusted, secure, safe-to-install, or safe-to-run.
 

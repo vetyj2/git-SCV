@@ -1,6 +1,6 @@
-# Git-SCV v0.3.2 RC Acceptance
+# Git-SCV v0.3.3 RC Acceptance
 
-The v0.3.2 release candidate is accepted only when the tagged GitHub install
+The v0.3.3 release candidate is accepted only when the tagged GitHub install
 flow, no-exec/no-leak contracts, source-bound analysis job workflow, and final
 report blocking behavior all match the CLI and generated artifacts.
 
@@ -15,8 +15,13 @@ report blocking behavior all match the CLI and generated artifacts.
   built-in Codex/Claude/fake/manual linkage, adapter template path, auth-file
   boundary, readiness state, likely remediation lines, and `doctor_ready`.
 - Run `git-scv <repo-path>` in a non-interactive context and confirm it
-  defaults to `quick_flow=pre-install-check`, uses manual worker mode, avoids
-  paid worker invocation, and leaves the run at `pending-unit-analysis`.
+  defaults to `quick_flow=local-preflight`, uses manual worker mode, avoids
+  paid worker invocation, reports `worker_started=false`, and leaves the run at
+  `pending-unit-analysis`.
+- Run `git-scv <repo-path-or-github-url>` in an interactive terminal and
+  confirm the quick-start menu moves with Up/Down and `j`/`k`, confirms with
+  Enter, still accepts `1`-`3`, and falls back to the numbered prompt if raw
+  terminal selection is unavailable.
 - Run `git-scv worker doctor --backend codex` on a machine with Codex CLI, or
   `git-scv worker doctor --backend fake` with a test worker.
 - Run `git-scv scan <repo-path> --goal install --worker fake` in CI and confirm
@@ -24,9 +29,14 @@ report blocking behavior all match the CLI and generated artifacts.
   content.
 - Run `git-scv review <repo-path> --goal install` for the recommended
   slice-review workflow.
-- Confirm terminal progress shows `analysis_stage`, source status, gate status,
+- Confirm terminal progress works as a compact dashboard: TTY output stays
+  short and redraw-safe, captured output remains plain key-value, and both show
+  `analysis_stage`, dashboard status, source status, gate status,
   completed/queued/claimed/failed/blocked job counts, final report readiness,
   `target_repo_commands_executed=false`, and the next safe command.
+- Confirm terminal output does not dump evidence bodies, slice contents, raw
+  worker output, or long report prose; those details must stay in artifacts and
+  HTML/Markdown reports.
 - Confirm `work_order_binding.json`, `analysis_jobs.jsonl`, `gpt_work_order.md`,
   `brief.md`, and `architecture.html` exist.
 - A Codex/Hermes session can claim one job, export one allowed content range,
@@ -34,6 +44,13 @@ report blocking behavior all match the CLI and generated artifacts.
 - `git-scv scan <repo-path> --goal install --worker codex` must process queued
   jobs sequentially through the allowlisted worker CLI boundary when the user's
   terminal already has a working Codex CLI session.
+- If a worker returns malformed unit-analysis JSON, Git-SCV must write a
+  `schema-invalid` receipt, retry within `--retry-format-errors`, and either
+  complete with a `schema-valid` receipt or leave the final report blocked with
+  a non-empty failure receipt.
+- `analysis_map.json` and `final_user_report.md/html` must include validated
+  qualitative digests, scoped uncertainty, relation candidates, and queued
+  follow-up jobs when workers provide them.
 - `git-scv continue <run-dir>` must not create `final_user_report.md/html`
   while runnable jobs are queued, claimed, or failed.
 - After all runnable jobs are completed, `git-scv continue <run-dir>` writes
@@ -68,12 +85,27 @@ report blocking behavior all match the CLI and generated artifacts.
   `git-scv github plan ...`.
 - Git-SCV must not clone, download archives, fetch file bodies, or execute
   target content.
-- Output must clearly say `analysis_stage=github-remote-metadata-plan` or
-  `source_acquisition=github-remote-tree`.
-- Output must tell the user to pin a ref and acquire source before full local
-  slice review.
+- Output must clearly say `analysis_stage=web-metadata-preflight` or
+  `source_acquisition=web-metadata-preflight`, with
+  `code_body_analysis=false`, `worker_started=false`, and
+  `semantic_analysis_complete=false`.
+- Output must tell the user to use `pinned-snapshot` or another local source
+  acquisition path before full slice review.
 - The metadata plan must not be presented as completed semantic repository
   analysis.
+
+## B3. GitHub Pinned Snapshot Flow
+
+- Run `git-scv scan https://github.com/<owner>/<repo> --mode pinned-snapshot
+  --worker manual` or the equivalent fake-worker test fixture.
+- Git-SCV must resolve the requested ref to a commit SHA, download that commit
+  archive, safely extract it, and then continue into the normal local scan/job
+  queue path.
+- `source.json` or `source_acquisition.json` must record
+  `external_digest_verified=false`,
+  `self_observed_digest_recorded=true`, and
+  `verification_level=pinned-commit-self-observed`.
+- This flow must not be described as strict checksum verification.
 
 ## C. Agent Flow
 

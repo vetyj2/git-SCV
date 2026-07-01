@@ -416,11 +416,12 @@ dependencies = [
 
 [[package]]
 name = "git-scv"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "clap",
  "flate2",
  "gix",
+ "libc",
  "serde",
  "serde_json",
  "sha2",

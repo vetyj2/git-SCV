@@ -24,6 +24,26 @@ struct TreeResponse {
 }
 
 #[derive(Deserialize)]
+struct RepoResponse {
+    default_branch: String,
+}
+
+#[derive(Deserialize)]
+struct CommitResponse {
+    sha: String,
+}
+
+pub struct PinnedSnapshotPlan {
+    pub archive_url: String,
+    pub pinned_commit: String,
+    pub owner: String,
+    pub name: String,
+    pub requested_ref: String,
+    pub resolved_ref: String,
+    pub redacted_url: String,
+}
+
+#[derive(Deserialize)]
 struct TreeEntry {
     path: String,
     mode: String,
@@ -53,8 +73,11 @@ pub fn plan(args: GithubPlanArgs) -> Result<(), ScvError> {
         "contract_version": "artifact-contract-v2",
         "producer": {"name": "git-scv", "version": env!("CARGO_PKG_VERSION")},
         "min_reader_version": env!("CARGO_PKG_VERSION"),
-        "analysis_stage": "static-preflight-only",
-        "source_acquisition": "github-remote-tree",
+        "analysis_stage": "web-metadata-preflight",
+        "source_acquisition": "web-metadata-preflight",
+        "code_body_analysis": false,
+        "worker_started": false,
+        "semantic_analysis_complete": false,
         "repo": {
             "host": "github.com",
             "owner": repo.owner,
@@ -77,10 +100,13 @@ pub fn plan(args: GithubPlanArgs) -> Result<(), ScvError> {
             "target_repo_commands_executed": false,
             "clone_performed": false,
             "archive_downloaded": false,
+            "worker_started": false,
+            "code_body_analysis": false,
+            "semantic_analysis_complete": false,
         },
         "next_safe_commands": [
-            "git-scv github inspect <repo-url> --ref <sha-or-tag> --selective",
-            "git-scv snapshot <archive-url> --sha256 <digest>"
+            "git-scv scan <repo-url> --mode pinned-snapshot --worker codex",
+            "git-scv snapshot <archive-url> --sha256 <external-digest>"
         ],
         "limitations": [
             "Tree metadata cannot reveal script body semantics.",
@@ -107,6 +133,31 @@ pub fn plan(args: GithubPlanArgs) -> Result<(), ScvError> {
         artifact["ref"]["moving_ref_warning"]
     );
     Ok(())
+}
+
+pub fn resolve_pinned_snapshot(
+    repo_url: &str,
+    requested_ref: &str,
+) -> Result<PinnedSnapshotPlan, ScvError> {
+    let repo = parse_github_repo(repo_url)?;
+    let resolved_ref = if requested_ref == "HEAD" {
+        fetch_default_branch(&repo.owner, &repo.name)?
+    } else {
+        requested_ref.to_string()
+    };
+    let commit = fetch_commit_sha(&repo.owner, &repo.name, &resolved_ref)?;
+    Ok(PinnedSnapshotPlan {
+        archive_url: format!(
+            "https://codeload.github.com/{}/{}/tar.gz/{}",
+            repo.owner, repo.name, commit
+        ),
+        pinned_commit: commit,
+        owner: repo.owner,
+        name: repo.name,
+        requested_ref: requested_ref.into(),
+        resolved_ref,
+        redacted_url: repo.redacted_url,
+    })
 }
 
 struct GithubRepo {
@@ -168,6 +219,47 @@ fn fetch_tree(owner: &str, repo: &str, git_ref: &str) -> Result<TreeResponse, Sc
         .map_err(|_err| ScvError::Usage("오류: GitHub tree metadata 본문 읽기 실패.".into()))?;
     serde_json::from_str(&text)
         .map_err(|_err| ScvError::Usage("오류: GitHub tree metadata JSON 해석 실패.".into()))
+}
+
+fn fetch_default_branch(owner: &str, repo: &str) -> Result<String, ScvError> {
+    let url = format!("https://api.github.com/repos/{owner}/{repo}");
+    let text = fetch_github_json_text(&url, 2 * 1024 * 1024, "GitHub repo metadata")?;
+    let response: RepoResponse = serde_json::from_str(&text)
+        .map_err(|_err| ScvError::Usage("오류: GitHub repo metadata JSON 해석 실패.".into()))?;
+    Ok(response.default_branch)
+}
+
+fn fetch_commit_sha(owner: &str, repo: &str, git_ref: &str) -> Result<String, ScvError> {
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/commits/{git_ref}");
+    let text = fetch_github_json_text(&url, 4 * 1024 * 1024, "GitHub commit metadata")?;
+    let response: CommitResponse = serde_json::from_str(&text)
+        .map_err(|_err| ScvError::Usage("오류: GitHub commit metadata JSON 해석 실패.".into()))?;
+    if looks_pinned_ref(&response.sha) {
+        Ok(response.sha)
+    } else {
+        Err(ScvError::Usage(
+            "오류: GitHub commit metadata가 commit SHA를 제공하지 않았다.".into(),
+        ))
+    }
+}
+
+fn fetch_github_json_text(url: &str, limit: u64, label: &str) -> Result<String, ScvError> {
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(GITHUB_TIMEOUT_SECS)))
+        .https_only(true)
+        .build();
+    let agent = ureq::Agent::new_with_config(config);
+    let mut response = agent
+        .get(url)
+        .header("User-Agent", "git-scv/0.3")
+        .call()
+        .map_err(|_err| ScvError::Usage(format!("오류: {label} 요청 실패.")))?;
+    response
+        .body_mut()
+        .with_config()
+        .limit(limit)
+        .read_to_string()
+        .map_err(|_err| ScvError::Usage(format!("오류: {label} 본문 읽기 실패.")))
 }
 
 fn classify_surfaces(entries: &[TreeEntry]) -> Vec<serde_json::Value> {

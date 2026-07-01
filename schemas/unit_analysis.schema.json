@@ -1,1 +1,189 @@
-{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Git-SCV unit analysis", "type": "object", "required": ["unit_id", "allowed_paths", "forbidden_paths", "claims"], "properties": { "unit_id": { "type": "string" }, "allowed_paths": { "type": "array" }, "forbidden_paths": { "type": "array" }, "claims": { "type": "array" } } }
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git-SCV unit analysis",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "unit_id",
+    "allowed_paths",
+    "forbidden_paths",
+    "claims",
+    "connections_observed",
+    "unresolved_questions"
+  ],
+  "properties": {
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "allowed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "forbidden_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "claim_id",
+          "type",
+          "summary",
+          "confidence",
+          "evidence_refs",
+          "source_paths",
+          "validated_by_git_scv",
+          "not_validated_by_git_scv"
+        ],
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "validated_by_git_scv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "not_validated_by_git_scv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "connections_observed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["from", "to", "edge_kind", "evidence_refs"],
+        "properties": {
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          },
+          "edge_kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "unresolved_questions": {
+      "type": "array"
+    },
+    "qualitative_digest": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "important_points": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scoped_uncertainty": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "map_delta": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "repo_purpose_candidates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "major_modules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "execution_flows": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pre_use_checklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "relation_candidates": {
+      "type": "array"
+    },
+    "followup_suggestions": {
+      "type": "array"
+    }
+  }
+}

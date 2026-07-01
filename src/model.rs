@@ -203,6 +203,11 @@ pub struct GitInfo {
 pub struct SnapshotInfo {
     pub url: String,
     pub sha256: String,
+    pub source_acquisition: String,
+    pub external_digest_verified: bool,
+    pub self_observed_digest_recorded: bool,
+    pub verification_level: String,
+    pub pinned_commit: Option<String>,
     pub archive_format: String,
     pub extracted_path: String,
     pub archive_limits: ArchiveLimits,

@@ -48,19 +48,38 @@ Codex/Claude linkage, the short command entrypoint, the adapter template path,
 the auth-file boundary, likely remediation steps, and the next safe command.
 
 `git-scv <repo-path-or-github-url>` opens the quick-start flow. In non-TTY
-automation it defaults to the pre-install check path, which avoids worker/API
-cost and stops at `pending-unit-analysis` until the user explicitly starts
-worker analysis. In an interactive terminal it asks the user to choose:
+automation it avoids paid worker/API cost. For local paths it starts the
+`local-preflight` path and stops at `pending-unit-analysis` until the user
+explicitly starts worker analysis. For GitHub URLs it starts
+`web-metadata-preflight`, which reads GitHub tree metadata only and clearly
+reports `code_body_analysis=false`, `worker_started=false`, and
+`semantic_analysis_complete=false`.
 
-1. pre-install check
-2. snapshot
-3. post-install full screening
+In an interactive terminal, a GitHub URL asks the user to choose:
+
+1. web metadata preflight
+2. pinned snapshot source analysis
+3. local folder / already acquired source analysis
+
+Use Up/Down or `j`/`k` to move through the few choices, Enter to confirm, or
+`1`-`3` to choose directly. If Git-SCV cannot enter raw terminal selection, it
+falls back to the same numbered prompt. Captured/non-TTY runs keep the safe
+default and do not silently download source or start a worker.
+
+The strict checksum path is deliberately separate: `strict-verified-snapshot`
+requires a user-supplied SHA-256 digest from an external channel. The practical
+GitHub convenience path is `pinned-snapshot`: Git-SCV resolves a ref to a commit
+SHA, downloads that commit archive, records a self-observed SHA-256, and labels
+the result `verification_level=pinned-commit-self-observed`. This is
+reproducibility metadata, not independent external digest verification.
 
 The explicit equivalents remain available:
 
 ```sh
 git-scv scan <repo-path> --goal install --worker codex
 git-scv scan <repo-path> --goal install --worker manual
+git-scv scan https://github.com/<owner>/<repo> --mode web-metadata-preflight
+git-scv scan https://github.com/<owner>/<repo> --mode pinned-snapshot --worker codex
 git-scv review <repo-path> --goal install
 git-scv review https://github.com/<owner>/<repo> --goal install
 git-scv continue <run-dir>
@@ -69,9 +88,25 @@ git-scv continue <run-dir>
 `scan` is the one-touch path. With `--worker codex` or `--worker claude`, it
 first runs preflight, then claims one source-bound job at a time, exports only
 that job's redacted allowed content range, invokes the configured worker CLI,
-validates the returned unit-analysis JSON/JSONL, completes the job, and repeats
+validates the returned unit-analysis JSON/JSONL, repairs one formatting/schema
+error by default with `--retry-format-errors 1`, completes the job, and repeats
 until no runnable jobs remain. With `--worker manual`, it stops after writing
 the same preflight/work-order/job artifacts.
+
+Worker pacing controls are available for real CLI backends:
+
+```sh
+git-scv scan <repo-path> --worker codex --worker-delay-ms 1000
+git-scv scan <repo-path> --worker codex --max-worker-calls-per-minute 10
+git-scv scan <repo-path> --worker codex --max-jobs 5 --resume
+git-scv scan <repo-path> --worker codex --stop-on-worker-error
+```
+
+Every worker attempt writes a non-empty `codex_invocation_receipt.jsonl` record
+with redacted argv, prompt hash, schema hash, status, duration, retry count,
+source fingerprint hash, artifact manifest hash, and explicit
+`oauth_token_read:false`, `oauth_token_stored:false`, `raw_stdout_stored:false`,
+and `raw_stderr_stored:false`.
 
 `review` creates the no-exec preflight artifacts, source-bound work order,
 analysis job queue, terminal progress panel, and `architecture.html` for agents
@@ -81,8 +116,9 @@ are completed.
 
 For GitHub URLs, `review` performs metadata-only planning through the GitHub
 tree API. It does not fetch file bodies or create slice-analysis jobs. It stops
-with `analysis_stage=github-remote-metadata-plan` and tells the user to pin the
-ref and acquire source before running full local review.
+with `analysis_stage=web-metadata-preflight` and tells the user to use
+`pinned-snapshot` or another local source acquisition path before full
+slice-by-slice worker analysis.
 
 Codex or another active agent session processes jobs with internal plumbing
 commands:
@@ -198,12 +234,14 @@ analysis_inputs.jsonl
 analysis_state.json
 analysis_events.jsonl
 llm_backend.json
+source_acquisition.json
 gpt_work_order.json
 gpt_work_order.md
 work_order_binding.json
 analysis_jobs.jsonl
 codex_invocation_receipt.jsonl
 analysis_map.json
+analysis_followup_jobs.jsonl
 ```
 
 Run manual export:
@@ -268,11 +306,19 @@ git-scv scan ./unknown-repo --goal install --worker codex --progress plain
 git-scv scan ./unknown-repo --goal install --worker codex --progress jsonl
 ```
 
-`--progress auto` shows an in-place terminal progress line when stdout is a
-terminal and plain key-value progress when stdout is captured. It does not
-clear the screen or use the alternate screen. Use `--progress plain` for logs,
-`--progress jsonl` for automation, and `--progress quiet` for wrappers that
-render their own dashboard.
+`--progress auto` treats the terminal as a compact status dashboard: when
+stdout is a terminal it redraws a short one-line status with stage, percent,
+current job/path, and next safe command. Captured output falls back to stable
+plain key-value progress. Git-SCV does not clear scrollback or use the
+alternate screen by default. Use `--progress plain` for logs, `--progress
+jsonl` for automation, and `--progress quiet` for wrappers that render their
+own dashboard.
+
+Terminal output is intentionally terse. It tells the user what is happening,
+whether the run is waiting/blocked/failed/complete, and which command or
+artifact to open next. Detailed evidence, slice reasoning, source maps, and
+repo explanations belong in `brief.md`, `final_user_report.md`, and
+`architecture.html`.
 
 Default real worker commands are shell-free and intentionally small:
 
@@ -452,6 +498,7 @@ source_landmarks.json
 visualization_index.json
 analysis_plan.json
 analysis_map.json
+analysis_followup_jobs.jsonl
 cross_unit_analysis.json
 synthesis.json
 followup_plan.json

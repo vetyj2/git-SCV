@@ -1,6 +1,6 @@
-# Git-SCV v0.3.2 RC Status
+# Git-SCV v0.3.3 RC Status
 
-This document records the current v0.3.2 release-candidate state against the
+This document records the current v0.3.3 release-candidate state against the
 2026-06-29 no-exec, no-leak, source-bound agent orchestration plan.
 
 ## Implemented
@@ -42,9 +42,16 @@ This document records the current v0.3.2 release-candidate state against the
   built-in Codex/Claude/fake/manual linkage, auth-file boundary, remediation
   hints, and worker readiness state.
 - Public short entrypoint `git-scv <repo-path-or-github-url>` with guided
-  quick flow. Non-interactive usage defaults to the pre-install manual check so
-  it avoids paid worker invocation unless the user explicitly selects full
-  screening.
+  quick flow. Non-interactive local paths default to `local-preflight`; GitHub
+  URLs default to `web-metadata-preflight` with `code_body_analysis:false`,
+  `worker_started:false`, and `semantic_analysis_complete:false`.
+- Interactive quick-start selection supports Up/Down and `j`/`k` movement,
+  Enter confirmation, direct `1`-`3` choice, and numbered-prompt fallback when
+  raw terminal selection is unavailable.
+- GitHub `pinned-snapshot` scan mode resolves refs to commit SHA, downloads the
+  pinned archive, records a self-observed SHA-256, labels the verification
+  level as `pinned-commit-self-observed`, and continues into the local
+  source-bound worker workflow.
 - `git-scv worker doctor --backend <backend>` readiness checks using worker CLI
   exit status and redacted output only, without OAuth/token file access.
 - Allowlisted worker process boundary for Codex/Claude/fake workers, with
@@ -58,12 +65,20 @@ This document records the current v0.3.2 release-candidate state against the
   writes the final user report only after runnable jobs are done.
 - Source-bound `work_order_binding.json` plus `analysis_jobs.jsonl` and
   `codex_invocation_receipt.jsonl`.
+- Worker prompt/schema/validator alignment for unit-analysis contract fields,
+  plus one-step format/schema repair retry.
+- Worker attempt receipts are written for attempt start, process failure,
+  schema failure, repair, and success without raw prompt/stdout/stderr storage.
+- Qualitative digests, map deltas, relation candidates, and follow-up jobs are
+  aggregated into `analysis_map.json`, `analysis_followup_jobs.jsonl`, and the
+  final user report.
 - Analysis job CLI for list/next/claim/complete/fail and safe content export.
 - Local runtime source pointer separated from public artifacts so default
   repo-relative path privacy can coexist with later content export.
 - Stale-source blocking for job claim, content export, and job completion.
 - Terminal progress output with stage, source status, gate status, job counts,
-  final-report status, no-exec status, and next safe command.
+  current job/path, failed/blocked counts, final-report status, no-exec status,
+  and next safe command.
 
 ## Documented
 
@@ -118,6 +133,6 @@ This document records the current v0.3.2 release-candidate state against the
 The tree must not be released if any item in `docs/RC_BLOCKERS.md` is present.
 At minimum, a GitHub tag release requires `cargo fmt`, `cargo test`, `cargo
 clippy --all-targets`, schema JSON validation, script syntax validation, secret
-scan, version consistency, and a fresh `cargo install --git ... --tag v0.3.2
+scan, version consistency, and a fresh `cargo install --git ... --tag v0.3.3
 --locked` test after tagging. `cargo package --locked` is recommended for the
 GitHub tag release and required before any crates.io publish path.

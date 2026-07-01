@@ -223,6 +223,9 @@ fn rc_manual_export_import_watch_and_final_report_flow() {
         .unwrap();
     assert_eq!(watch_before.status.code(), Some(0));
     let watch_before_stdout = String::from_utf8_lossy(&watch_before.stdout);
+    assert!(watch_before_stdout.contains("dashboard_status="));
+    assert!(watch_before_stdout.contains("stage_summary="));
+    assert!(watch_before_stdout.contains("progress_percent="));
     assert!(watch_before_stdout.contains("analysis_stage=pending-unit-analysis"));
     assert!(watch_before_stdout
         .contains("final_report_status=blocked-until-analysis-map-and-meta-synthesis"));
@@ -272,6 +275,8 @@ fn rc_manual_export_import_watch_and_final_report_flow() {
         .unwrap();
     assert_eq!(watch_after.status.code(), Some(0));
     let watch_after_stdout = String::from_utf8_lossy(&watch_after.stdout);
+    assert!(watch_after_stdout.contains("dashboard_status="));
+    assert!(watch_after_stdout.contains("stage_summary=analysis map ready"));
     assert!(watch_after_stdout.contains("analysis_stage=analysis-map-complete"));
     assert!(watch_after_stdout.contains("final_report_status=ready-to-generate"));
 
@@ -464,6 +469,16 @@ JSON\n",
     );
     let stdout = String::from_utf8_lossy(&scan.stdout);
     assert!(stdout.contains("git_scv_scan_progress"), "{stdout}");
+    assert!(stdout.contains("status=complete"), "{stdout}");
+    assert!(
+        stdout.contains("stage_summary=analysis map ready"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("target_repo_commands_executed=false"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("safe_claim_made=false"), "{stdout}");
     assert!(stdout.contains("final_report=complete"), "{stdout}");
     assert!(out.join("final_user_report.md").is_file());
     assert!(out.join("worker_backend.json").is_file());
@@ -481,6 +496,103 @@ JSON\n",
     let receipts = fs::read_to_string(out.join("codex_invocation_receipt.jsonl")).unwrap();
     assert!(receipts.contains("\"agent\":\"GitSCVFakeWorker\""));
     assert!(receipts.contains("\"target_repo_commands_executed\":false"));
+}
+
+#[cfg(unix)]
+#[test]
+fn rc_scan_fake_worker_repairs_invalid_result_and_reports_qualitative_digest() {
+    let repo = common::temp_dir("rc-scan-worker-repair-repo");
+    fs::write(repo.join("src.js"), "export const value = 1;\n").unwrap();
+    let fake_dir = common::temp_dir("rc-scan-worker-repair-bin");
+    let fake_worker = fake_dir.join("fake-worker.sh");
+    fs::write(
+        &fake_worker,
+        "#!/bin/sh\n\
+if [ \"$1\" = \"--version\" ]; then echo git-scv-fake-worker 1; exit 0; fi\n\
+prompt=$(cat)\n\
+case \"$prompt\" in\n\
+  *\"previous answer did not pass\"*) cat <<'JSON'\n\
+{\"unit_id\":\"UFAKE\",\"allowed_paths\":[\"src.js\"],\"forbidden_paths\":[],\"claims\":[],\"connections_observed\":[],\"unresolved_questions\":[],\"qualitative_digest\":{\"summary\":\"Slice shows a small JavaScript module exporting a value.\",\"important_points\":[\"src.js exports a value\"],\"scoped_uncertainty\":[\"Only the exported src.js slice was reviewed.\"]},\"map_delta\":{\"repo_purpose_candidates\":[\"Small JavaScript module\"],\"major_modules\":[\"src.js\"],\"execution_flows\":[\"No install or run flow was observed in this slice.\"],\"owner_questions\":[\"Which command is the supported entrypoint?\"],\"pre_use_checklist\":[\"Review package scripts before install.\"]},\"relation_candidates\":[{\"from\":\"file:src.js\",\"to\":\"unknown:entrypoint\",\"kind\":\"unknown\",\"confidence\":\"low\"}],\"followup_suggestions\":[\"Check package manifest for the runtime entrypoint.\"]}\n\
+JSON\n\
+    ;;\n\
+  *) echo '{\"unit_id\":\"broken\"}' ;;\n\
+esac\n",
+    )
+    .unwrap();
+    let mut perms = fs::metadata(&fake_worker).unwrap().permissions();
+    perms.set_mode(0o700);
+    fs::set_permissions(&fake_worker, perms).unwrap();
+    let out = common::temp_dir("rc-scan-worker-repair-out").join("run");
+
+    let scan = Command::new(common::bin())
+        .arg("scan")
+        .arg(&repo)
+        .args(["--out"])
+        .arg(&out)
+        .args([
+            "--worker",
+            "fake",
+            "--progress",
+            "plain",
+            "--retry-format-errors",
+            "1",
+        ])
+        .env("GIT_SCV_FAKE_WORKER", &fake_worker)
+        .output()
+        .unwrap();
+    assert_eq!(
+        scan.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&scan.stdout),
+        String::from_utf8_lossy(&scan.stderr)
+    );
+    let receipts = fs::read_to_string(out.join("codex_invocation_receipt.jsonl")).unwrap();
+    assert!(
+        receipts.contains("\"status\":\"schema-invalid\""),
+        "{receipts}"
+    );
+    assert!(
+        receipts.contains("\"status\":\"schema-valid\""),
+        "{receipts}"
+    );
+    assert!(
+        receipts.contains("\"receipt_kind\":\"worker-invocation-attempt\""),
+        "{receipts}"
+    );
+    assert!(
+        receipts.contains("\"raw_stdout_stored\":false"),
+        "{receipts}"
+    );
+    assert!(
+        receipts.contains("\"oauth_token_read\":false"),
+        "{receipts}"
+    );
+    assert!(out
+        .join("analysis/worker-results/J00001.repair1.jsonl")
+        .is_file());
+    assert!(out.join("analysis_followup_jobs.jsonl").is_file());
+
+    let map: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(out.join("analysis_map.json")).unwrap()).unwrap();
+    assert_eq!(map["followup_required"], true, "{map}");
+    assert_eq!(map["followup_jobs_count"], 2, "{map}");
+    assert!(
+        map["qualitative_digests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item.as_str().unwrap().contains("small JavaScript module")),
+        "{map}"
+    );
+    let report = fs::read_to_string(out.join("final_user_report.md")).unwrap();
+    assert!(report.contains("Slice-Level Understanding"), "{report}");
+    assert!(report.contains("Small JavaScript module"), "{report}");
+    assert!(report.contains("Relation and Follow-Up Notes"), "{report}");
+    assert!(
+        report.contains("Only the exported src.js slice was reviewed."),
+        "{report}"
+    );
 }
 
 #[cfg(unix)]
@@ -701,7 +813,13 @@ fn rc_short_repo_command_defaults_to_pre_install_check_without_worker_cost() {
         String::from_utf8_lossy(&quick.stderr)
     );
     let stdout = String::from_utf8_lossy(&quick.stdout);
-    assert!(stdout.contains("quick_flow=pre-install-check"), "{stdout}");
+    assert!(stdout.contains("quick_flow=local-preflight"), "{stdout}");
+    assert!(stdout.contains("worker_started=false"), "{stdout}");
+    assert!(stdout.contains("code_body_analysis=false"), "{stdout}");
+    assert!(
+        stdout.contains("semantic_analysis_complete=false"),
+        "{stdout}"
+    );
     assert!(stdout.contains("recommended_worker=codex"), "{stdout}");
     assert!(stdout.contains("cost_notice="), "{stdout}");
     assert!(stdout.contains("scan_worker=manual"), "{stdout}");

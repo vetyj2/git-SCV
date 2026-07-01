@@ -12,8 +12,9 @@ Required flow:
    model/thinking-level reminder, and possible API-key cost warning to the
    user.
 1. Prefer the shortest user entrypoint, `git-scv <repo-path-or-github-url>`,
-   when the user wants the guided flow. In non-interactive contexts this
-   defaults to pre-install check and does not start a paid worker. Use
+   when the user wants the guided flow. In non-interactive contexts, local
+   paths default to `local-preflight` and GitHub URLs default to
+   `web-metadata-preflight`; neither starts a paid worker. Use
    `git-scv scan <repo> --goal install --worker codex` for the explicit
    one-touch public slice-review workflow when Codex CLI is available. Use
    `git-scv scan <repo> --goal install --worker manual` or
@@ -49,6 +50,13 @@ Preflight versus analysis:
 
 - `inspect`, `snapshot`, and `case create` are static no-exec preflight. They
   do not call a model and do not mean repository semantic analysis is complete.
+- `web-metadata-preflight` for GitHub URLs reads tree metadata only. It does
+  not fetch file bodies, does not create content slice jobs, does not start a
+  worker, and must be summarized as `code_body_analysis=false`.
+- `pinned-snapshot` resolves a GitHub ref to a commit SHA, downloads that
+  commit archive, records a self-observed SHA-256, and then continues into the
+  local scan workflow. It must not be described as independent external digest
+  verification.
 - `scan` starts no-exec preflight plus a source-bound analysis queue. With a
   real worker backend, Git-SCV may start only the configured Codex/Claude worker
   CLI through its allowlisted worker boundary. It must not run target repository
@@ -93,6 +101,12 @@ Preflight versus analysis:
 - Use `git-scv continue <run-dir>` or `git-scv report final <run-dir>` only
   after runnable jobs are complete and `analysis_map.json` is complete. Do not
   present preflight `report.html` as a final repo-understanding report.
+- If a worker result fails validation, Git-SCV may retry a format/schema repair
+  within `--retry-format-errors`. Hermes must report schema-invalid receipts
+  and blocked jobs instead of claiming the analysis completed.
+- Final user reports should be based on validated qualitative digests, map
+  deltas, relation candidates, and follow-up jobs, not only on the validator
+  JSON shape.
 
 Hermes must not run target repository commands, package managers, hooks,
 binaries, workflows, containers, or install scripts unless the user explicitly

@@ -1,6 +1,6 @@
 [package]
 name = "git-scv"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "A Rust workflow harness for evidence-backed source code review."
@@ -38,6 +38,7 @@ ureq = "3.3.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 tar = "0.4.46"
 flate2 = "1.1.9"
+libc = "0.2.186"
 
 [lints.clippy]
 unwrap_used = "warn"

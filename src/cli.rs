@@ -124,9 +124,11 @@ pub struct DoctorArgs {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuickFlow {
-    PreInstallCheck,
-    Snapshot,
-    PostInstallFullScreening,
+    LocalPreflight,
+    WebMetadataPreflight,
+    StrictSnapshotReminder,
+    PinnedSnapshotAnalysis,
+    LocalFullWorker,
 }
 
 pub struct QuickArgs {
@@ -135,7 +137,7 @@ pub struct QuickArgs {
 
 #[derive(clap::Args)]
 pub struct ScanArgs {
-    /// 검사하고 분석할 로컬 저장소 경로. GitHub URL은 metadata-only plan으로 시작한다.
+    /// 검사하고 분석할 로컬 저장소 경로 또는 GitHub URL.
     pub target: PathBuf,
     /// 사용자가 판단하려는 목표
     #[arg(long, value_enum, default_value = "install")]
@@ -158,22 +160,47 @@ pub struct ScanArgs {
     /// 실험/테스트용: 이번 scan에서 자동 처리할 최대 job 수
     #[arg(long)]
     pub max_jobs: Option<usize>,
+    /// worker formatting/schema 오류 재시도 횟수
+    #[arg(long, default_value_t = 1)]
+    pub retry_format_errors: u8,
+    /// worker 호출 사이 최소 지연(ms)
+    #[arg(long, default_value_t = 0)]
+    pub worker_delay_ms: u64,
+    /// 분당 worker 호출 상한. 0이면 비활성화한다.
+    #[arg(long, default_value_t = 0)]
+    pub max_worker_calls_per_minute: u32,
+    /// worker 오류가 나면 즉시 멈춘다. 기본값은 계속 안전 실패 상태로 남기는 것이다.
+    #[arg(long)]
+    pub stop_on_worker_error: bool,
+    /// 기존 run dir가 있으면 이어서 진행한다.
+    #[arg(long)]
+    pub resume: bool,
+    /// strict verified snapshot에서 사용할 외부 SHA-256 digest
+    #[arg(long)]
+    pub sha256: Option<String>,
+    /// GitHub pinned snapshot에서 해석할 ref
+    #[arg(long, default_value = "HEAD")]
+    pub r#ref: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 #[value(rename_all = "kebab-case")]
 pub enum ScanMode {
     LocalFull,
-    WebOnly,
-    VerifiedSnapshot,
+    #[value(alias = "web-only")]
+    WebMetadataPreflight,
+    #[value(alias = "verified-snapshot")]
+    StrictVerifiedSnapshot,
+    PinnedSnapshot,
 }
 
 impl ScanMode {
     pub fn as_str(self) -> &'static str {
         match self {
             ScanMode::LocalFull => "local-full",
-            ScanMode::WebOnly => "web-only",
-            ScanMode::VerifiedSnapshot => "verified-snapshot",
+            ScanMode::WebMetadataPreflight => "web-metadata-preflight",
+            ScanMode::StrictVerifiedSnapshot => "strict-verified-snapshot",
+            ScanMode::PinnedSnapshot => "pinned-snapshot",
         }
     }
 }

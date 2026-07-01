@@ -30,6 +30,7 @@ pub mod slices;
 pub mod snapshot;
 pub mod source;
 pub mod synthesis;
+pub mod terminal_ui;
 pub mod unit_analysis;
 pub mod validate;
 pub mod visualization;

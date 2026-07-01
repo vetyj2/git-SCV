@@ -18,13 +18,13 @@ or stderr.
 Install the current tagged GitHub release:
 
 ```sh
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked
 ```
 
 Update to the current tagged GitHub release:
 
 ```sh
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked --force
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked --force
 ```
 
 Install a specific reviewed revision:
@@ -96,8 +96,8 @@ GIT_SCV_CASE_ROOT=/path/to/cases scripts/git-scv-hermes.sh inspect <repo-path>
 
 | User intent | Hermes action |
 | --- | --- |
-| "Install Git-SCV" | `scripts/git-scv-hermes.sh install` or `cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked` |
-| "Update Git-SCV" | `scripts/git-scv-hermes.sh update-latest` or `cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked --force` |
+| "Install Git-SCV" | `scripts/git-scv-hermes.sh install` or `cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked` |
+| "Update Git-SCV" | `scripts/git-scv-hermes.sh update-latest` or `cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked --force` |
 | "Inspect this local repo" | `scripts/git-scv-hermes.sh inspect <repo-path> [label]` |
 | "Inspect this verified archive" | `scripts/git-scv-hermes.sh snapshot <archive-url> <sha256> [label]` |
 | "Summarize the mandatory safety gate" | `scripts/git-scv-hermes.sh brief <case-dir>` |

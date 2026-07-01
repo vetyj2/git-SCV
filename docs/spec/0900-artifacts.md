@@ -17,9 +17,11 @@
   `sensitive.json`, `gates.json`, `gate_decisions.json`, `slices.json`,
   `static_preflight_summary.json`, `sub_slices.json`, `sub_slices.jsonl`,
   `analysis_inputs.json`, `analysis_inputs.jsonl`, `analysis_state.json`,
-  `analysis_events.jsonl`, `llm_backend.json`, `gpt_work_order.json`,
+  `analysis_events.jsonl`, `llm_backend.json`, `source_acquisition.json`,
+  `gpt_work_order.json`,
   `gpt_work_order.md`, `analysis_jobs.jsonl`,
-  `codex_invocation_receipt.jsonl`, `work_order_binding.json`,
+  `codex_invocation_receipt.jsonl`, `analysis_followup_jobs.jsonl`,
+  `work_order_binding.json`,
   `review.json`, `security.json`, `supported_surfaces.json`,
   `connection_graph.json`, `reachability_scenarios.json`,
   `architecture_map.json`, `relation_map.json`, `source_landmarks.json`,
@@ -62,7 +64,7 @@
 {
   "schema_version": "1",
   "run_id": "scv-20260612T120003Z",
-  "tool": { "name": "git-scv", "version": "0.3.2" },
+  "tool": { "name": "git-scv", "version": "0.3.3" },
   "command": {
     "program": "git-scv",
     "subcommand": "inspect",

@@ -53,16 +53,79 @@ pub fn finish_downloaded_snapshot(
         return usage("오류: snapshot 체크섬이 일치하지 않는다.".into());
     }
 
-    let archive_kind = archive_kind(archive_url)
-        .ok_or_else(|| usage_error("오류: snapshot 압축 형식을 확인할 수 없다.".into()))?;
     let source_dir = out.join("source");
     let run_dir = out.join("run");
-    extract_archive_bytes(bytes, archive_kind, &source_dir)?;
-    let snapshot = build_snapshot_info(expected, archive_url, archive_kind, &source_dir)?;
+    finish_downloaded_snapshot_to_run(
+        bytes,
+        expected,
+        archive_url,
+        &source_dir,
+        &run_dir,
+        SnapshotVerification {
+            source_acquisition: "strict-verified-snapshot",
+            external_digest_verified: true,
+            self_observed_digest_recorded: true,
+            verification_level: "external-digest-verified",
+            pinned_commit: None,
+        },
+        command,
+    )
+}
+
+pub fn finish_downloaded_pinned_snapshot(
+    bytes: &[u8],
+    archive_url: &str,
+    pinned_commit: &str,
+    out: &Path,
+    command: crate::model::RunCommand,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), ScvError> {
+    let observed = sha256_hex(bytes);
+    let source_dir = out.join("source");
+    let run_dir = out.join("run");
+    finish_downloaded_snapshot_to_run(
+        bytes,
+        &observed,
+        archive_url,
+        &source_dir,
+        &run_dir,
+        SnapshotVerification {
+            source_acquisition: "pinned-snapshot",
+            external_digest_verified: false,
+            self_observed_digest_recorded: true,
+            verification_level: "pinned-commit-self-observed",
+            pinned_commit: Some(pinned_commit.to_string()),
+        },
+        command,
+    )?;
+    Ok((run_dir, source_dir))
+}
+
+struct SnapshotVerification {
+    source_acquisition: &'static str,
+    external_digest_verified: bool,
+    self_observed_digest_recorded: bool,
+    verification_level: &'static str,
+    pinned_commit: Option<String>,
+}
+
+fn finish_downloaded_snapshot_to_run(
+    bytes: &[u8],
+    sha256: &str,
+    archive_url: &str,
+    source_dir: &Path,
+    run_dir: &Path,
+    verification: SnapshotVerification,
+    command: crate::model::RunCommand,
+) -> Result<(), ScvError> {
+    let archive_kind = archive_kind(archive_url)
+        .ok_or_else(|| usage_error("오류: snapshot 압축 형식을 확인할 수 없다.".into()))?;
+    extract_archive_bytes(bytes, archive_kind, source_dir)?;
+    let snapshot =
+        build_snapshot_info(sha256, archive_url, archive_kind, source_dir, verification)?;
     crate::inspect::run_with_snapshot(
         crate::cli::InspectArgs {
-            repo_path: source_dir.clone(),
-            out: run_dir,
+            repo_path: source_dir.to_path_buf(),
+            out: run_dir.to_path_buf(),
             sensitive_mode: SensitiveReviewMode::Exclude,
             approve_sensitive_review: false,
             sensitive_review_ack: None,
@@ -76,7 +139,7 @@ pub fn finish_downloaded_snapshot(
     )
 }
 
-fn download_snapshot_bytes(url: &str) -> Result<Vec<u8>, ScvError> {
+pub fn download_snapshot_bytes(url: &str) -> Result<Vec<u8>, ScvError> {
     let config = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(SNAPSHOT_DOWNLOAD_TIMEOUT_SECS)))
         .https_only(true)
@@ -84,7 +147,7 @@ fn download_snapshot_bytes(url: &str) -> Result<Vec<u8>, ScvError> {
     let agent = ureq::Agent::new_with_config(config);
     let mut response = agent
         .get(url)
-        .header("User-Agent", "git-scv/0.2")
+        .header("User-Agent", "git-scv/0.3")
         .call()
         .map_err(|_err| usage_error("오류: snapshot 다운로드 실패.".into()))?;
     response
@@ -133,7 +196,7 @@ fn archive_kind(value: &str) -> Option<ArchiveKind> {
     let path = strip_url_query_fragment(value).to_ascii_lowercase();
     if path.ends_with(".zip") {
         Some(ArchiveKind::Zip)
-    } else if path.ends_with(".tar.gz") || path.ends_with(".tgz") {
+    } else if path.ends_with(".tar.gz") || path.ends_with(".tgz") || path.contains("/tar.gz/") {
         Some(ArchiveKind::TarGz)
     } else {
         None
@@ -141,10 +204,11 @@ fn archive_kind(value: &str) -> Option<ArchiveKind> {
 }
 
 fn build_snapshot_info(
-    expected: &str,
+    sha256: &str,
     archive_url: &str,
     archive_kind: ArchiveKind,
     source_dir: &Path,
+    verification: SnapshotVerification,
 ) -> Result<SnapshotInfo, ScvError> {
     let extracted_path = fs::canonicalize(source_dir).map_err(|err| {
         ScvError::Inspect(format!(
@@ -154,7 +218,12 @@ fn build_snapshot_info(
     })?;
     Ok(SnapshotInfo {
         url: snapshot_metadata_url(archive_url),
-        sha256: expected.to_ascii_lowercase(),
+        sha256: sha256.to_ascii_lowercase(),
+        source_acquisition: verification.source_acquisition.into(),
+        external_digest_verified: verification.external_digest_verified,
+        self_observed_digest_recorded: verification.self_observed_digest_recorded,
+        verification_level: verification.verification_level.into(),
+        pinned_commit: verification.pinned_commit,
         archive_format: archive_kind.label().into(),
         extracted_path: extracted_path.display().to_string(),
         archive_limits: ArchiveLimits {
@@ -366,8 +435,8 @@ fn hex_lower(bytes: impl AsRef<[u8]>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        finish_downloaded_snapshot, sha256_hex, sha256_matches, SNAPSHOT_DOWNLOAD_LIMIT_BYTES,
-        SNAPSHOT_MAX_DEPTH,
+        finish_downloaded_pinned_snapshot, finish_downloaded_snapshot, sha256_hex, sha256_matches,
+        SNAPSHOT_DOWNLOAD_LIMIT_BYTES, SNAPSHOT_MAX_DEPTH,
     };
     use flate2::write::GzEncoder;
     use flate2::Compression;
@@ -497,6 +566,43 @@ mod tests {
             "pub fn ok() {}"
         );
         assert_snapshot_run_artifacts(&out);
+    }
+
+    #[test]
+    fn pinned_snapshot_records_self_observed_not_external_verification() {
+        let bytes = tar_gz_bytes("project/src/lib.rs", b"pub fn ok() {}");
+        let checksum = sha256_hex(&bytes);
+        let out = test_path("pinned-snapshot-output");
+        let (run_dir, source_dir) = finish_downloaded_pinned_snapshot(
+            &bytes,
+            "https://codeload.github.com/example/project/tar.gz/0123456789012345678901234567890123456789",
+            "0123456789012345678901234567890123456789",
+            &out,
+            crate::model::RunCommand {
+                program: "git-scv".into(),
+                subcommand: "scan".into(),
+                args_redacted: vec!["<github-url:redacted-query-fragment>".into()],
+                raw_args_stored: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(run_dir, out.join("run"));
+        assert_eq!(source_dir, out.join("source"));
+        let source: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("run/source.json")).unwrap())
+                .unwrap();
+        assert_eq!(source["snapshot"]["source_acquisition"], "pinned-snapshot");
+        assert_eq!(source["snapshot"]["sha256"], checksum);
+        assert_eq!(source["snapshot"]["external_digest_verified"], false);
+        assert_eq!(source["snapshot"]["self_observed_digest_recorded"], true);
+        assert_eq!(
+            source["snapshot"]["verification_level"],
+            "pinned-commit-self-observed"
+        );
+        assert_eq!(
+            source["snapshot"]["pinned_commit"],
+            "0123456789012345678901234567890123456789"
+        );
     }
 
     #[test]
