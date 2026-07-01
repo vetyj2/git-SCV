@@ -37,11 +37,17 @@ fn copy_dir(src: &Path, dst: &Path) {
 }
 
 /// 픽스처 복사 + 깃에 담기 어려운 항목 생성:
-/// .husky/(D12), NUL 바이너리, 바이너리 package.json(바이너리 판정),
+/// .env(D13), .husky/(D12), NUL 바이너리, 바이너리 package.json(바이너리 판정),
 /// 저장소 밖을 가리키는 심볼릭 링크(9007).
 pub fn materialize(tag: &str) -> PathBuf {
     let repo = temp_dir(tag);
     copy_dir(&fixture_src(), &repo);
+
+    fs::write(
+        repo.join(".env"),
+        "GIT_SCV_TEST_SECRET=redacted-test-marker\n",
+    )
+    .unwrap();
 
     fs::create_dir_all(repo.join(".husky")).unwrap();
     fs::write(repo.join(".husky").join("pre-commit"), "#!/bin/sh\n").unwrap();
