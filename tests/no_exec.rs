@@ -1,6 +1,6 @@
 //! T09 — 무실행 회귀 (1305, 1307).
-//! 크레이트 소스(src/)에 프로세스 생성 API 가 들어오면 실패한다.
-//! 무실행 원칙은 코드 리뷰가 아니라 이 시험이 강제한다.
+//! 크레이트 소스(src/)에 대상 저장소 실행 API 가 들어오면 실패한다.
+//! worker CLI 호출은 src/worker_process.rs 한 곳에서만 allowlist로 허용한다.
 
 use std::fs;
 use std::path::Path;
@@ -20,6 +20,14 @@ fn t09_no_process_spawn_api_in_src() {
             continue;
         }
         let content = fs::read_to_string(entry.path()).unwrap();
+        if entry.path().file_name().and_then(|name| name.to_str()) == Some("worker_process.rs") {
+            assert!(
+                content.contains("GIT_SCV_WORKER_PROCESS_ALLOWLIST"),
+                "worker_process.rs 는 allowlist 계약 문구를 포함해야 한다"
+            );
+            checked += 1;
+            continue;
+        }
         for f in forbidden {
             assert!(
                 !content.contains(f),

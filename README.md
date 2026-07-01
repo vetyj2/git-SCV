@@ -20,9 +20,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Install Git-SCV from GitHub:
 
 ```sh
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.1 --locked
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked
 cargo install --git https://github.com/vetyj2/git-SCV --rev <commit-sha> --locked
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.1 --locked --force
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.2 --locked --force
 git-scv --version
 ```
 
@@ -47,6 +47,12 @@ cargo build
 ## Usage
 
 ```sh
+git-scv init
+git-scv doctor
+git-scv <repo-path-or-github-url>
+git-scv scan <repo-path> --goal install --worker codex
+git-scv scan <repo-path> --goal install --worker manual
+git-scv worker doctor --backend codex
 git-scv review <repo-path> --goal install
 git-scv review https://github.com/<owner>/<repo> --goal install
 git-scv continue <run-dir>
@@ -64,7 +70,26 @@ git-scv analyze <run-dir> --backend manual-export
 git-scv analysis import <run-dir> <unit-results.jsonl>
 git-scv report final <run-dir>
 git-scv github plan https://github.com/<owner>/<repo> --ref <sha-or-tag> --out <plan-dir>
+git-scv clean <run-dir>
 ```
+
+Run `git-scv init` once before full screening. Git-SCV is Codex-first by
+default in its recommended workflow, but it does not read Codex OAuth/token
+files. The init/doctor output reminds users that the worker CLI's current model
+and thinking/reasoning level will be used, and that API-key based worker
+configuration can incur paid usage. If you use Claude or another coding agent,
+copy [`scripts/git-scv-worker-adapter.example.py`](scripts/git-scv-worker-adapter.example.py)
+outside the target repository and adjust the non-secret CLI command/args.
+
+The shortest preflight entry is:
+
+```sh
+git-scv https://github.com/<owner>/<repo>
+```
+
+For GitHub URLs this starts metadata-only planning and then asks for pinned
+source acquisition before full screening. For local directories it starts the
+pre-install check path without invoking a paid worker by default.
 
 `<repo-path>` must be a local directory for full slice review. `review` accepts
 GitHub repository URLs only for a no-exec metadata plan; it does not fetch file
@@ -88,16 +113,27 @@ and extracted source path.
 For detailed command examples, sensitive-candidate modes, and artifact reading
 order, see [USAGE.md](USAGE.md).
 
-`review` is the recommended local entrypoint. It runs no-exec preflight, writes
-the work order, creates source-bound analysis jobs, and prints a compact
-terminal progress panel. `continue` resumes the same run and creates the final
-user report only after the runnable analysis jobs are completed. `inspect`,
-`snapshot`, and `github plan` remain core preflight commands. Git-SCV itself
-does not spawn Codex, Claude, package managers, shells, or target commands.
-Instead, `analysis job claim`, `analysis export-content`, and `analysis job
-complete` give an active Codex/user terminal session deterministic slice work,
-redacted content export, and source-bound completion receipts. `report final`
-is blocked while runnable jobs remain queued, claimed, or failed.
+`scan` is the one-touch local entrypoint. It runs no-exec preflight, writes the
+work order, creates source-bound analysis jobs, optionally invokes a configured
+Codex/Claude worker CLI one slice at a time, validates each unit-analysis
+result, and creates the final user report only after runnable jobs are
+completed. `review` remains the split/manual entrypoint for agents that want to
+claim/export/complete jobs themselves. `inspect`, `snapshot`, and `github plan`
+remain core preflight commands.
+
+Git-SCV never runs target repository package managers, shells, scripts, hooks,
+binaries, workflows, containers, or install commands. The only process-spawning
+exception is the allowlisted worker CLI boundary used by `scan --worker
+codex|claude|fake`; it is not allowed to point inside the target repository.
+`worker doctor` infers readiness from worker CLI exit status and redacted
+stdout/stderr only. It must not stat, list, read, hash, delete, write, or
+serialize Codex/Claude OAuth token files or auth directories.
+
+For manual review, `analysis job claim`, `analysis export-content`, and
+`analysis job complete` give an active Codex/user terminal session
+deterministic slice work, redacted content export, and source-bound completion
+receipts. `report final` is blocked while runnable jobs remain queued, claimed,
+or failed.
 
 When an automated LLM CLI backend is unavailable, Git-SCV still writes
 `gpt_work_order.json` and `gpt_work_order.md` as a source-bound receipt so GPT
@@ -148,6 +184,7 @@ analysis_inputs.jsonl
 analysis_state.json
 analysis_events.jsonl
 llm_backend.json
+worker_backend.json (created by `git-scv scan --worker <backend>`)
 gpt_work_order.json
 gpt_work_order.md
 work_order_binding.json
@@ -180,19 +217,23 @@ final_user_report.html (created after completed analysis jobs)
 Use Git-SCV before installing, building, testing, or running an unfamiliar
 repository.
 
-1. Use `git-scv review <repo-path> --goal install` when the repository is
-   already on disk and you want the slice-by-slice review workflow.
-2. Use `inspect` when you only need the static preflight artifact set.
-3. Use `snapshot` only when you have an HTTPS archive URL and a SHA-256 digest
+1. Use `git-scv scan <repo-path> --goal install --worker codex` when the
+   repository is already on disk and you want one command to run preflight,
+   sequential worker slice analysis, and final report generation.
+2. Use `git-scv scan <repo-path> --goal install --worker manual` or
+   `git-scv review <repo-path> --goal install` when Codex/Claude CLI is not
+   available or you want an agent to handle each job explicitly.
+3. Use `inspect` when you only need the static preflight artifact set.
+4. Use `snapshot` only when you have an HTTPS archive URL and a SHA-256 digest
    verified through a separate channel.
-4. Run `git-scv brief <run-dir>` first and summarize its verdict, required
+5. Run `git-scv brief <run-dir>` first and summarize its verdict, required
    actions, model-excluded path count, `artifact_manifest_sha256`,
    `source_fingerprint_hash`, and `agent_read_receipt` before any next action.
-5. Open `architecture.html` for overview, execution scenarios, script
+6. Open `architecture.html` for overview, execution scenarios, script
    relationships, gates, coverage, source landmarks, and synthesis views.
    The top badge tells you whether this is only a preflight map or a completed
    analysis view.
-6. Read `report.md` or `report.html`, including the required action list, then
+7. Read `report.md` or `report.html`, including the required action list, then
    check `source.json`, `inventory.json`, `coverage.json`,
    `findings.json`, `evidence.json`, `dependencies.json`, `sensitive.json`,
    `gates.json`, `gate_decisions.json`, `slices.json`, `review.json`,
@@ -201,22 +242,22 @@ repository.
    `relation_map.json`, `source_landmarks.json`, `visualization_index.json`,
    `analysis_plan.json`, `cross_unit_analysis.json`, `synthesis.json`, and
    `followup_plan.json` before approving any next action.
-7. If you want Codex to analyze slices one at a time, follow
+8. If you want Codex to analyze slices manually one at a time, follow
    `gpt_work_order.md`: claim a job, export the allowed content range, write one
    unit-analysis JSON/JSONL result, complete the job, and repeat until no
    runnable jobs remain. Then run `git-scv continue <run-dir>` to generate
    `final_user_report.md/html`.
-8. If you use bulk manual-export instead, `analysis import` marks only jobs
+9. If you use bulk manual-export instead, `analysis import` marks only jobs
    whose `allowed_paths` match imported units as complete. Final report
    generation remains blocked until all runnable jobs are completed.
-9. Treat `secret-candidate` findings as unresolved review items, not as safe or
+10. Treat `secret-candidate` findings as unresolved review items, not as safe or
    ignored files.
-10. When using case packages, run `git-scv case verify-source <case-id>` before
+11. When using case packages, run `git-scv case verify-source <case-id>` before
    any install/build/test/run approval request.
-11. Use `git-scv case next-action <case-id> --action install --argv <program>
+12. Use `git-scv case next-action <case-id> --action install --argv <program>
    <arg>` to check source, manifest, receipt, and gate blockers before asking
    for execution approval.
-12. Ask for explicit approval before running install, build, test, script, hook,
+13. Ask for explicit approval before running install, build, test, script, hook,
    binary, workflow, package-manager, or container commands from the inspected
    repository.
 13. For agent-supplied unit analyses, run `git-scv validate-unit <run-dir>
@@ -281,7 +322,7 @@ configuration.
 
 ## Status
 
-v0.3.1 uses the schema-breaking artifact-contract-v2 release line. v0.2 artifacts are
+v0.3.2 uses the schema-breaking artifact-contract-v2 release line. v0.2 artifacts are
 not migrated; re-run inspection. Git-SCV does not claim repositories are safe,
 clean, trusted, secure, safe-to-install, or safe-to-run.
 

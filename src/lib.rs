@@ -35,3 +35,4 @@ pub mod validate;
 pub mod visualization;
 pub mod walk;
 pub mod web_report;
+pub mod worker_process;

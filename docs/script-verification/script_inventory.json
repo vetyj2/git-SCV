@@ -104,6 +104,26 @@
           "responsibility": "Delegate deletion to Rust case delete/prune with exact acknowledgement and case sentinel checks."
         }
       ]
+    },
+    {
+      "path": "scripts/git-scv-worker-adapter.example.py",
+      "executable": true,
+      "description": "Non-secret example adapter for routing a Git-SCV worker prompt to a local LLM coding-agent CLI outside the target repository.",
+      "modules": [
+        {
+          "module_id": "M07-WORKER-ADAPTER-TEMPLATE",
+          "stage": "SV2/SV3",
+          "functions": [
+            "main"
+          ],
+          "commands": [
+            "GIT_SCV_AGENT_CMD",
+            "GIT_SCV_AGENT_ARGS",
+            "subprocess.run"
+          ],
+          "responsibility": "Read a Git-SCV worker prompt from stdin, invoke one non-shell coding-agent command selected by non-secret environment overrides, forward stdout/stderr, and avoid storing OAuth/API credentials."
+        }
+      ]
     }
   ]
 }

@@ -4,7 +4,7 @@
 use crate::errors::ScvError;
 use crate::model::{PathPrivacyMode, ReceiptNextAction, SensitiveReviewMode};
 use crate::redaction::{redact_url_for_error, strip_url_query_fragment, url_has_userinfo};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -24,11 +24,22 @@ pub const SENSITIVE_RAW_ACK: &str = "include-approved-sensitive-raw-in-diagnosti
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Subcommand,
+    command: Option<Subcommand>,
+    /// Quick entry target. Example: git-scv https://github.com/owner/repo
+    pub quick_target: Option<PathBuf>,
 }
 
 #[derive(clap::Subcommand)]
 enum Subcommand {
+    /// 첫 실행 전 worker/OAuth/model-cost 설정을 안내하고 점검한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Init(InitArgs),
+    /// Git-SCV 사용 전반의 준비 상태와 대응 방법을 점검한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Doctor(DoctorArgs),
+    /// 낯선 repo를 no-exec preflight부터 slice worker 분석과 final report까지 한 번에 진행한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Scan(ScanArgs),
     /// 낯선 repo를 설치/빌드/실행 전에 no-exec Codex slice review 세션으로 시작한다
     #[command(after_help = NO_EXEC_HELP)]
     Review(ReviewArgs),
@@ -83,6 +94,126 @@ enum Subcommand {
     /// GitHub remote-first metadata planning
     #[command(after_help = NO_EXEC_HELP)]
     Github(GithubArgs),
+    /// Codex/Claude worker CLI 사용 가능 여부를 auth 파일 접근 없이 점검한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Worker(WorkerArgs),
+    /// run/case 내부 임시 분석 export를 안전하게 정리한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Clean(CleanArgs),
+}
+
+#[derive(clap::Args)]
+pub struct InitArgs {
+    /// 처음 설정할 권장 worker backend
+    #[arg(long, value_enum, default_value = "codex")]
+    pub worker: WorkerBackend,
+    /// worker 준비가 안 되어 있으면 실패 코드로 종료한다
+    #[arg(long)]
+    pub strict: bool,
+}
+
+#[derive(clap::Args)]
+pub struct DoctorArgs {
+    /// 특정 backend만 점검한다. 없으면 Codex와 Claude를 모두 확인한다.
+    #[arg(long, value_enum)]
+    pub backend: Option<WorkerBackend>,
+    /// 준비가 안 된 backend가 있으면 실패 코드로 종료한다
+    #[arg(long)]
+    pub strict: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuickFlow {
+    PreInstallCheck,
+    Snapshot,
+    PostInstallFullScreening,
+}
+
+pub struct QuickArgs {
+    pub target: PathBuf,
+}
+
+#[derive(clap::Args)]
+pub struct ScanArgs {
+    /// 검사하고 분석할 로컬 저장소 경로. GitHub URL은 metadata-only plan으로 시작한다.
+    pub target: PathBuf,
+    /// 사용자가 판단하려는 목표
+    #[arg(long, value_enum, default_value = "install")]
+    pub goal: ReviewGoal,
+    /// source acquisition/analysis mode
+    #[arg(long, value_enum, default_value = "local-full")]
+    pub mode: ScanMode,
+    /// slice를 처리할 worker backend
+    #[arg(long, value_enum, default_value = "manual")]
+    pub worker: WorkerBackend,
+    /// case package 대신 직접 쓸 출력 디렉터리
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+    /// artifact/report에 저장할 경로 privacy 정책
+    #[arg(long, value_enum, default_value = "repo-relative")]
+    pub path_privacy: PathPrivacyMode,
+    /// terminal progress 출력 모드
+    #[arg(long, value_enum, default_value = "auto")]
+    pub progress: ProgressMode,
+    /// 실험/테스트용: 이번 scan에서 자동 처리할 최대 job 수
+    #[arg(long)]
+    pub max_jobs: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum ScanMode {
+    LocalFull,
+    WebOnly,
+    VerifiedSnapshot,
+}
+
+impl ScanMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScanMode::LocalFull => "local-full",
+            ScanMode::WebOnly => "web-only",
+            ScanMode::VerifiedSnapshot => "verified-snapshot",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum WorkerBackend {
+    Manual,
+    Fake,
+    Codex,
+    Claude,
+}
+
+impl WorkerBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WorkerBackend::Manual => "manual",
+            WorkerBackend::Fake => "fake",
+            WorkerBackend::Codex => "codex",
+            WorkerBackend::Claude => "claude",
+        }
+    }
+
+    pub fn agent_name(self) -> &'static str {
+        match self {
+            WorkerBackend::Manual => "Manual",
+            WorkerBackend::Fake => "GitSCVFakeWorker",
+            WorkerBackend::Codex => "Codex",
+            WorkerBackend::Claude => "Claude",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum ProgressMode {
+    Auto,
+    Plain,
+    Jsonl,
+    Quiet,
 }
 
 #[derive(clap::Args)]
@@ -442,6 +573,38 @@ pub struct GithubPlanArgs {
 }
 
 #[derive(clap::Args)]
+pub struct WorkerArgs {
+    #[command(subcommand)]
+    pub command: WorkerSubcommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum WorkerSubcommand {
+    /// worker CLI가 PATH/override에서 실행 가능한지만 확인한다. auth 파일은 읽지 않는다.
+    #[command(after_help = NO_EXEC_HELP)]
+    Doctor(WorkerDoctorArgs),
+}
+
+#[derive(clap::Args)]
+pub struct WorkerDoctorArgs {
+    /// 점검할 backend
+    #[arg(long, value_enum, default_value = "codex")]
+    pub backend: WorkerBackend,
+}
+
+#[derive(clap::Args)]
+pub struct CleanArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// 실제 삭제 실행. 없으면 dry-run plan만 출력한다.
+    #[arg(long)]
+    pub apply: bool,
+    /// 삭제 확인 문구. 실제 삭제 시 clean-git-scv-run 필요.
+    #[arg(long)]
+    pub ack: Option<String>,
+}
+
+#[derive(clap::Args)]
 pub struct ValidateUnitArgs {
     /// inspect run directory 또는 case package directory
     pub run_dir: PathBuf,
@@ -450,6 +613,10 @@ pub struct ValidateUnitArgs {
 }
 
 pub enum Invocation {
+    Quick(QuickArgs),
+    Init(InitArgs),
+    Doctor(DoctorArgs),
+    Scan(ScanArgs),
     Review(ReviewArgs),
     Continue(RunDirArgs),
     Inspect(InspectArgs),
@@ -483,10 +650,24 @@ pub enum Invocation {
     Resume(RunDirArgs),
     ReportFinal(RunDirArgs),
     GithubPlan(GithubPlanArgs),
+    WorkerDoctor(WorkerDoctorArgs),
+    Clean(CleanArgs),
 }
 
 pub fn parse() -> Invocation {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    let Some(command) = cli.command else {
+        if let Some(target) = cli.quick_target {
+            return Invocation::Quick(QuickArgs { target });
+        }
+        Cli::command().print_help().ok();
+        println!();
+        std::process::exit(0);
+    };
+    match command {
+        Subcommand::Init(args) => Invocation::Init(args),
+        Subcommand::Doctor(args) => Invocation::Doctor(args),
+        Subcommand::Scan(args) => Invocation::Scan(args),
         Subcommand::Review(args) => Invocation::Review(args),
         Subcommand::Continue(args) => Invocation::Continue(args),
         Subcommand::Inspect(args) => Invocation::Inspect(args),
@@ -532,6 +713,10 @@ pub fn parse() -> Invocation {
         Subcommand::Github(args) => match args.command {
             GithubSubcommand::Plan(args) => Invocation::GithubPlan(args),
         },
+        Subcommand::Worker(args) => match args.command {
+            WorkerSubcommand::Doctor(args) => Invocation::WorkerDoctor(args),
+        },
+        Subcommand::Clean(args) => Invocation::Clean(args),
     }
 }
 

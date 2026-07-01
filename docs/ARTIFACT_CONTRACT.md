@@ -19,6 +19,9 @@ Core rules:
   of the recursive manifest hash chain
 - `analysis_jobs.jsonl` stores source-bound slice jobs; queued/claimed/failed
   runnable jobs block final report generation
+- `worker_backend.json` is written by `scan --worker <backend>` and records
+  backend readiness without OAuth/token files and with
+  `target_repo_commands_executed:false`
 - `codex_invocation_receipt.jsonl` records job completion provenance without
   OAuth/API tokens and with `target_repo_commands_executed:false`
 - `.git-scv-runtime-local.json` may exist beside artifacts for local review

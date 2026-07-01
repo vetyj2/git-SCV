@@ -9,6 +9,10 @@ fn main() {
 
 fn run() -> Result<(), git_scv::errors::ScvError> {
     match git_scv::cli::parse() {
+        git_scv::cli::Invocation::Quick(args) => git_scv::analysis_runtime::quick(args),
+        git_scv::cli::Invocation::Init(args) => git_scv::analysis_runtime::init(args),
+        git_scv::cli::Invocation::Doctor(args) => git_scv::analysis_runtime::doctor(args),
+        git_scv::cli::Invocation::Scan(args) => git_scv::analysis_runtime::scan(args),
         git_scv::cli::Invocation::Review(args) => git_scv::analysis_runtime::review(args),
         git_scv::cli::Invocation::Continue(args) => git_scv::analysis_runtime::continue_run(args),
         git_scv::cli::Invocation::Inspect(args) => git_scv::inspect::run(args),
@@ -60,5 +64,9 @@ fn run() -> Result<(), git_scv::errors::ScvError> {
             git_scv::analysis_runtime::report_final(args)
         }
         git_scv::cli::Invocation::GithubPlan(args) => git_scv::github_remote::plan(args),
+        git_scv::cli::Invocation::WorkerDoctor(args) => {
+            git_scv::analysis_runtime::worker_doctor(args)
+        }
+        git_scv::cli::Invocation::Clean(args) => git_scv::analysis_runtime::clean(args),
     }
 }

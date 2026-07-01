@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git-scv.local/schemas/worker_backend.schema.json",
+  "title": "Git-SCV worker backend status",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "producer",
+    "backend",
+    "ready",
+    "auth_files_touched",
+    "oauth_token_stored",
+    "oauth_token_forwarded",
+    "target_repo_commands_executed"
+  ],
+  "properties": {
+    "artifact_kind": {
+      "const": "worker_backend"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "contract_version": {
+      "const": "artifact-contract-v2"
+    },
+    "producer": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "const": "git-scv"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "backend": {
+      "enum": ["manual", "fake", "codex", "claude"]
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "checked_commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["program", "args", "status_code"],
+        "properties": {
+          "program": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status_code": {
+            "type": ["integer", "null"]
+          },
+          "stdout_redacted": {
+            "type": "string"
+          },
+          "stderr_redacted": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "auth_files_touched": {
+      "const": false
+    },
+    "oauth_token_stored": {
+      "const": false
+    },
+    "oauth_token_forwarded": {
+      "const": false
+    },
+    "target_repo_commands_executed": {
+      "const": false
+    },
+    "auth_readiness_source": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

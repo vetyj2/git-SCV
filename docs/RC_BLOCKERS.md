@@ -1,4 +1,4 @@
-# Git-SCV v0.3.1 RC Blockers
+# Git-SCV v0.3.2 RC Blockers
 
 Do not publish the release if any of these are true.
 
@@ -6,8 +6,30 @@ Do not publish the release if any of these are true.
   version.
 - A documented CLI command is missing.
 - The documented artifact set does not match generated artifacts.
+- `git-scv init` is missing, fails without a clear diagnostic, or omits the
+  Codex-first recommendation, OAuth/token non-access policy, API-key cost
+  warning, model/thinking-level reminder, worker readiness state, or next safe
+  command.
+- `git-scv doctor` is missing, fails without a clear diagnostic, or omits the
+  short entry command, built-in Codex/Claude linkage, adapter template path,
+  auth-file boundary, likely remediation lines, or readiness state.
+- `git-scv <repo-path-or-github-url>` does not enter the quick flow, or its
+  non-interactive default starts a paid worker instead of the pre-install
+  manual check.
+- GitHub URL quick/scan flow starts Codex/Claude worker analysis before pinned
+  source acquisition.
 - `git-scv review <repo-path> --goal install` cannot create a source-bound
   review run with `analysis_jobs.jsonl` and terminal progress.
+- `git-scv scan <repo-path> --goal install --worker fake` cannot complete a
+  source-bound fake-worker run through final_user_report.md/html in CI.
+- `git-scv scan <repo-path> --goal install --worker codex` executes anything
+  other than the configured Codex worker CLI process outside the target repo.
+- A worker executable inside the target repository is accepted.
+- Git-SCV stats, lists, reads, hashes, deletes, writes, or serializes
+  Codex/Claude/OAuth/API/token files or auth directories.
+- `scripts/git-scv-worker-adapter.example.py` contains OAuth tokens, API keys,
+  connector credentials, deploy keys, private URLs, user-specific auth paths,
+  or instructions to put secrets in environment overrides.
 - `git-scv continue <run-dir>` creates a final user report while runnable jobs
   are still queued, claimed, or failed.
 - `analysis job claim`, `analysis export-content`, or `analysis job complete`
@@ -37,7 +59,7 @@ Do not publish the release if any of these are true.
 - `case show` or `case status` leaks the absolute source path by default.
 - `cargo fmt`, `cargo test`, `cargo clippy --all-targets`, schema validation,
   script syntax checks, secret scan, version consistency check, or fresh
-  `cargo install --git ... --tag v0.3.1 --locked` test fail.
+  `cargo install --git ... --tag v0.3.2 --locked` test fail.
 - `cargo package --locked` fails for a crates.io release path.
 
 Non-blockers before stable:

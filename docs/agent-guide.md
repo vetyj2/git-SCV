@@ -10,6 +10,21 @@
 
 ## 2. 호출 (1201, 1202)
 
+사용자가 원터치 분석을 원하면:
+
+```sh
+git-scv scan <repo-path> --goal install --worker codex
+```
+
+Codex/Claude CLI가 없거나 에이전트가 직접 각 slice를 처리할 때는:
+
+```sh
+git-scv scan <repo-path> --goal install --worker manual
+git-scv review <repo-path> --goal install
+```
+
+정적 preflight만 필요하면:
+
 ```sh
 git-scv inspect <repo-path> --out <run-dir>
 ```
@@ -19,6 +34,9 @@ git-scv inspect <repo-path> --out <run-dir>
   종료 코드 2로 거부된다.
 - 종료 코드: 0 성공 / 2 입력 오류 / 3 검사 실패 / 4 산출물 검증 실패.
 - stdout은 파싱하지 않는다. 판단은 산출물 파일로만 한다(1203).
+- `scan --worker codex|claude`가 허용하는 프로세스 실행은 target repo가
+  아니라 사용자의 터미널에 이미 준비된 worker CLI뿐이다. git-scv는
+  OAuth/token 파일을 읽거나 저장하지 않는다.
 
 ## 3. 산출물 읽기 순서 (1203, 1206)
 

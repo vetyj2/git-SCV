@@ -1,6 +1,6 @@
-# Git-SCV v0.3.1 RC Status
+# Git-SCV v0.3.2 RC Status
 
-This document records the current v0.3.1 release-candidate state against the
+This document records the current v0.3.2 release-candidate state against the
 2026-06-29 no-exec, no-leak, source-bound agent orchestration plan.
 
 ## Implemented
@@ -32,6 +32,28 @@ This document records the current v0.3.1 release-candidate state against the
 - Hermes wrapper cleanup delegated to Rust case delete/prune.
 - Public `git-scv review <repo-path> --goal <goal>` entrypoint for the
   preflight plus slice-analysis workflow.
+- Public `git-scv scan <repo-path> --goal <goal> --worker <backend>` entrypoint
+  for one-touch preflight, sequential worker slice analysis, validation, and
+  final report generation.
+- Public `git-scv init` first-run readiness check with Codex-first guidance,
+  OAuth/token non-access policy, API-key cost warning, model/thinking-level
+  reminder, worker readiness, adapter-template pointer, and next safe command.
+- Public `git-scv doctor` readiness check for the short entry command,
+  built-in Codex/Claude/fake/manual linkage, auth-file boundary, remediation
+  hints, and worker readiness state.
+- Public short entrypoint `git-scv <repo-path-or-github-url>` with guided
+  quick flow. Non-interactive usage defaults to the pre-install manual check so
+  it avoids paid worker invocation unless the user explicitly selects full
+  screening.
+- `git-scv worker doctor --backend <backend>` readiness checks using worker CLI
+  exit status and redacted output only, without OAuth/token file access.
+- Allowlisted worker process boundary for Codex/Claude/fake workers, with
+  target-repository executable and cwd rejection.
+- Example custom worker adapter template at
+  `scripts/git-scv-worker-adapter.example.py`, documented as a non-secret
+  command-shape template that must be copied outside target repositories.
+- `git-scv clean <run-dir>` dry-run by default and exact-ack cleanup for
+  run-internal temporary analysis exports only.
 - Public `git-scv continue <run-dir>` entrypoint that resumes progress and
   writes the final user report only after runnable jobs are done.
 - Source-bound `work_order_binding.json` plus `analysis_jobs.jsonl` and
@@ -66,6 +88,14 @@ This document records the current v0.3.1 release-candidate state against the
 - Integration contract for the full RC artifact set.
 - `review -> analysis job claim -> export-content -> complete -> continue`
   end-to-end flow.
+- `scan --worker fake` one-touch flow through final report generation.
+- `git-scv init --worker fake --strict` reports readiness and cost/auth/model
+  notices without auth-file access.
+- `git-scv doctor --backend fake --strict` reports built-in linkage,
+  remediation surface, and readiness without auth-file access.
+- `git-scv <repo-path>` defaults to pre-install manual check in non-interactive
+  contexts.
+- Rejection of worker executables located inside the target repository.
 - Source change after review blocks job claim and marks analysis state stale.
 - Bulk `analysis import` completes only matching jobs and keeps final report
   blocked while runnable jobs remain.
@@ -78,14 +108,16 @@ This document records the current v0.3.1 release-candidate state against the
 - Real gate-decision approval CLI lifecycle beyond the current source-bound
   decision artifact and `next-action` blocker.
 - Hard performance budgets in CI; current metrics are acceptance guidance.
-- Automated Codex/Claude process spawning backend. The current RC intentionally
-  uses the active user/Codex terminal session and stores no credentials.
+- Advanced Codex/Claude adapter compatibility. The RC has an allowlisted
+  `scan --worker codex|claude` process boundary, but real CLI argument shapes
+  may require `GIT_SCV_CODEX_WORKER_ARGS` or `GIT_SCV_CLAUDE_WORKER_ARGS` on
+  machines whose local worker CLI differs from the default shell-free command.
 
 ## Public Release Blockers
 
 The tree must not be released if any item in `docs/RC_BLOCKERS.md` is present.
 At minimum, a GitHub tag release requires `cargo fmt`, `cargo test`, `cargo
 clippy --all-targets`, schema JSON validation, script syntax validation, secret
-scan, version consistency, and a fresh `cargo install --git ... --tag v0.3.1
+scan, version consistency, and a fresh `cargo install --git ... --tag v0.3.2
 --locked` test after tagging. `cargo package --locked` is recommended for the
 GitHub tag release and required before any crates.io publish path.

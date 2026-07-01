@@ -27,6 +27,10 @@
   `cross_unit_analysis.json`, `synthesis.json`, `followup_plan.json`,
   `report.md`, `report.html`, `architecture.html`을 포함한다. agent receipt는
   `git-scv receipt create` 뒤 `agent_receipt.json`으로 추가된다.
+- `git-scv scan --worker <backend>`는 inspect 산출물 위에
+  `worker_backend.json`을 추가할 수 있다. 이 artifact는 OAuth/token 파일을
+  저장하거나 참조하지 않고 worker CLI readiness와
+  `target_repo_commands_executed:false`를 기록한다.
 - v0.3은 artifact-contract-v2 release다. 모든 JSON artifact는
   `artifact_kind`, `contract_version`, `producer`, `min_reader_version`을
   포함한다. 기존 core artifact 중 일부는 내부 payload 스키마
@@ -58,7 +62,7 @@
 {
   "schema_version": "1",
   "run_id": "scv-20260612T120003Z",
-  "tool": { "name": "git-scv", "version": "0.3.1" },
+  "tool": { "name": "git-scv", "version": "0.3.2" },
   "command": {
     "program": "git-scv",
     "subcommand": "inspect",

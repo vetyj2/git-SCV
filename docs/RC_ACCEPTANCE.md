@@ -1,12 +1,27 @@
-# Git-SCV v0.3.1 RC Acceptance
+# Git-SCV v0.3.2 RC Acceptance
 
-The v0.3.1 release candidate is accepted only when the tagged GitHub install
+The v0.3.2 release candidate is accepted only when the tagged GitHub install
 flow, no-exec/no-leak contracts, source-bound analysis job workflow, and final
 report blocking behavior all match the CLI and generated artifacts.
 
 ## A. New-User Local Inspect Flow
 
 - Install with a tag or reviewed revision.
+- Run `git-scv init` once and confirm it prints the Codex-first recommendation,
+  OAuth/token non-access policy, API-key paid-usage warning, model/thinking
+  level reminder, worker readiness, and the next safe command:
+  `git-scv <repo-path-or-github-url>`.
+- Run `git-scv doctor` and confirm it reports the short entry command,
+  built-in Codex/Claude/fake/manual linkage, adapter template path, auth-file
+  boundary, readiness state, likely remediation lines, and `doctor_ready`.
+- Run `git-scv <repo-path>` in a non-interactive context and confirm it
+  defaults to `quick_flow=pre-install-check`, uses manual worker mode, avoids
+  paid worker invocation, and leaves the run at `pending-unit-analysis`.
+- Run `git-scv worker doctor --backend codex` on a machine with Codex CLI, or
+  `git-scv worker doctor --backend fake` with a test worker.
+- Run `git-scv scan <repo-path> --goal install --worker fake` in CI and confirm
+  the run reaches `final_user_report.md/html` without executing target repo
+  content.
 - Run `git-scv review <repo-path> --goal install` for the recommended
   slice-review workflow.
 - Confirm terminal progress shows `analysis_stage`, source status, gate status,
@@ -16,6 +31,9 @@ report blocking behavior all match the CLI and generated artifacts.
   `brief.md`, and `architecture.html` exist.
 - A Codex/Hermes session can claim one job, export one allowed content range,
   write one unit-analysis JSON/JSONL result, complete that job, and repeat.
+- `git-scv scan <repo-path> --goal install --worker codex` must process queued
+  jobs sequentially through the allowlisted worker CLI boundary when the user's
+  terminal already has a working Codex CLI session.
 - `git-scv continue <run-dir>` must not create `final_user_report.md/html`
   while runnable jobs are queued, claimed, or failed.
 - After all runnable jobs are completed, `git-scv continue <run-dir>` writes
@@ -44,6 +62,8 @@ report blocking behavior all match the CLI and generated artifacts.
 
 ## B2. GitHub Metadata Plan Flow
 
+- Run `git-scv https://github.com/<owner>/<repo>` and confirm the guided quick
+  flow does not start a worker until source acquisition has been completed.
 - Run `git-scv review https://github.com/<owner>/<repo> --goal install` or
   `git-scv github plan ...`.
 - Git-SCV must not clone, download archives, fetch file bodies, or execute
@@ -59,6 +79,8 @@ report blocking behavior all match the CLI and generated artifacts.
 
 Hermes or another agent must be able to handle:
 
+- "Set up Git-SCV first."
+- "Check whether Codex/Claude linkage is ready."
 - "Inspect this repo with Git-SCV first."
 - "Review this repo slice by slice before I install it."
 - "Summarize only the brief."
@@ -74,6 +96,11 @@ Hermes or another agent must be able to handle:
 The agent must summarize the brief before requesting model-input approval or
 execution approval. It must create an agent receipt before a blocked next
 action can proceed.
+
+Before starting real Codex/Claude worker analysis, the agent must show the
+`git-scv init` or `git-scv doctor` readiness result, warn that API-key based
+worker configuration may incur paid usage, and ask the user to confirm the
+worker CLI model and thinking/reasoning level.
 
 For the job runtime, the agent must use `analysis job claim`,
 `analysis export-content`, and `analysis job complete` rather than browsing
@@ -97,6 +124,20 @@ The RC fails if any artifact, stdout, stderr, report, or HTML contains raw:
 
 The RC fails if Git-SCV or its wrapper executes target repo install, build,
 test, script, hook, binary, workflow, package-manager, or container commands.
+The only process-spawning exception is an allowlisted worker CLI executable
+outside the target repository. A worker executable inside the target repository
+is an RC failure.
+
+## E2. Worker Auth Boundary
+
+The RC fails if Git-SCV stats, lists, reads, hashes, deletes, writes, or
+serializes Codex/Claude/OAuth/API/token files or auth directories. Worker
+readiness may be inferred only from allowlisted worker CLI exit status and
+redacted stdout/stderr.
+
+The adapter template must remain a non-secret example. It may contain command
+shape examples, but must not contain deploy keys, OAuth tokens, API keys,
+connector credentials, private URLs, or user-specific auth paths.
 
 ## F. Stale-Source Flow
 

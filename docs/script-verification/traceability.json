@@ -92,6 +92,21 @@
         "P0629-P1-CASE-DELETE-SAFETY",
         "P0629-P0-FAILURE-PATH-REDACTION"
       ]
+    },
+    {
+      "module_id": "M07-WORKER-ADAPTER-TEMPLATE",
+      "script_path": "scripts/git-scv-worker-adapter.example.py",
+      "stage": "SV2/SV3",
+      "check_ids": [
+        "REQ-SECURITY-NO-SAFE-CLAIM",
+        "REQ-RELEASE-INSTALL-DOCS",
+        "UI-TARGET-NO-EXEC",
+        "UI-NO-LEAK-OUTPUT",
+        "UI-FAILURE-REDACTION",
+        "P0629-P15-PROMPT-INJECTION-UNTRUSTED",
+        "P0629-P5-NO-TARGET-PACKAGE-MANAGER",
+        "P0629-P0-NO-LEAK-CONTRACT"
+      ]
     }
   ],
   "final_verification": {

@@ -16,6 +16,10 @@ There are two layers:
   `analysis export-content`, `analysis job complete`, `analyze --backend
   manual-export`, `analysis import`, `watch`, `resume`, `gpt_work_order.json`,
   analysis map, and final user report generation.
+- Git-SCV one-touch worker runtime: `scan --worker codex|claude|fake`
+  orchestrates the same source-bound job queue through a configured external
+  worker CLI, validates each unit-analysis result, and then generates the final
+  user report when the queue is complete.
 
 Preflight artifacts are not completed semantic repository analysis. The stage
 is exposed as `analysis_stage` in brief, report, architecture, and analysis
@@ -24,18 +28,56 @@ runtime artifacts.
 ## Recommended Public Flow
 
 For the normal "can I install/build/test/run this unfamiliar repo?" workflow,
-start with the two public commands:
+start with the short public flow:
 
 ```sh
+git-scv init
+git-scv doctor
+git-scv <repo-path-or-github-url>
+```
+
+`git-scv init` is the first-run setup check. It is Codex-first by default, but
+it does not read Codex, Claude, OAuth, API, connector, or token files. It
+checks worker readiness only through the configured worker CLI exit status and
+redacted output, reminds the user that API-key based worker setups may incur
+paid usage, and asks the user to verify the worker CLI model and
+thinking/reasoning level before full screening.
+
+`git-scv doctor` is the pre-work readiness check. It reports built-in
+Codex/Claude linkage, the short command entrypoint, the adapter template path,
+the auth-file boundary, likely remediation steps, and the next safe command.
+
+`git-scv <repo-path-or-github-url>` opens the quick-start flow. In non-TTY
+automation it defaults to the pre-install check path, which avoids worker/API
+cost and stops at `pending-unit-analysis` until the user explicitly starts
+worker analysis. In an interactive terminal it asks the user to choose:
+
+1. pre-install check
+2. snapshot
+3. post-install full screening
+
+The explicit equivalents remain available:
+
+```sh
+git-scv scan <repo-path> --goal install --worker codex
+git-scv scan <repo-path> --goal install --worker manual
 git-scv review <repo-path> --goal install
 git-scv review https://github.com/<owner>/<repo> --goal install
 git-scv continue <run-dir>
 ```
 
+`scan` is the one-touch path. With `--worker codex` or `--worker claude`, it
+first runs preflight, then claims one source-bound job at a time, exports only
+that job's redacted allowed content range, invokes the configured worker CLI,
+validates the returned unit-analysis JSON/JSONL, completes the job, and repeats
+until no runnable jobs remain. With `--worker manual`, it stops after writing
+the same preflight/work-order/job artifacts.
+
 `review` creates the no-exec preflight artifacts, source-bound work order,
-analysis job queue, terminal progress panel, and `architecture.html`.
-`continue` resumes the run and generates `final_user_report.md/html` only after
-all runnable analysis jobs are completed.
+analysis job queue, terminal progress panel, and `architecture.html` for agents
+that want to claim/export/complete jobs explicitly. `continue` resumes the run
+and generates `final_user_report.md/html` only after all runnable analysis jobs
+are completed.
 
 For GitHub URLs, `review` performs metadata-only planning through the GitHub
 tree API. It does not fetch file bodies or create slice-analysis jobs. It stops
@@ -62,6 +104,23 @@ fingerprint. If the source changed after review, the job flow stops with
 range, applies redaction, writes `analysis/content-export/<job-id>.json`, and
 keeps `raw_content_stored:false`. OAuth/API/connector credentials are never
 requested, stored, forwarded, serialized, or written into receipts.
+
+Worker CLI auth policy:
+
+- Git-SCV must not stat, list, read, hash, delete, write, or serialize Codex,
+  Claude, OAuth, API, connector, or token files.
+- Git-SCV recommends an already logged-in OAuth/subscription CLI session over
+  storing API keys in project files. If the worker CLI is configured with API
+  keys, full screening may consume paid API quota.
+- Git-SCV uses the model and thinking/reasoning level configured in the worker
+  CLI. Check those settings before `scan --worker codex|claude`.
+- `git-scv worker doctor --backend codex` and `git-scv worker doctor --backend
+  claude` check only allowlisted CLI command exit status plus redacted
+  stdout/stderr.
+- If worker auth is missing, Git-SCV tells the user to log in with the worker
+  CLI outside the repository. It does not run login/logout flows and does not
+  inspect auth storage.
+- The worker executable must not live inside the target repository.
 
 ## Local Inspection
 
@@ -187,6 +246,49 @@ evidence IDs, path boundaries, and raw marker scan before appending
 `unit_analysis.jsonl`. It marks only matching queued/claimed jobs complete.
 `report final` is blocked while runnable jobs remain queued, claimed, or
 failed, and until `analysis_map.json` is complete.
+
+## One-Touch Worker Runtime
+
+Use `scan` when the user wants one command to drive slice analysis:
+
+```sh
+git-scv init
+git-scv doctor
+git-scv ./unknown-repo
+git-scv worker doctor --backend codex
+git-scv scan ./unknown-repo --goal install --worker codex
+```
+
+Useful variants:
+
+```sh
+git-scv scan ./unknown-repo --goal install --worker claude
+git-scv scan ./unknown-repo --goal install --worker manual
+git-scv scan ./unknown-repo --goal install --worker codex --progress plain
+git-scv scan ./unknown-repo --goal install --worker codex --progress jsonl
+```
+
+`--progress auto` shows an in-place terminal progress line when stdout is a
+terminal and plain key-value progress when stdout is captured. It does not
+clear the screen or use the alternate screen. Use `--progress plain` for logs,
+`--progress jsonl` for automation, and `--progress quiet` for wrappers that
+render their own dashboard.
+
+Default real worker commands are shell-free and intentionally small:
+
+- Codex: `codex exec --ephemeral --skip-git-repo-check --color never -`
+- Claude: `claude -p`
+
+Set `GIT_SCV_CODEX_BIN`, `GIT_SCV_CODEX_WORKER_ARGS`,
+`GIT_SCV_CLAUDE_BIN`, or `GIT_SCV_CLAUDE_WORKER_ARGS` if your local CLI uses a
+different non-shell invocation. These variables configure worker CLI behavior
+only; they are not token variables and must not contain secrets.
+
+For other coding-agent CLIs, copy
+`scripts/git-scv-worker-adapter.example.py` outside the target repository and
+customize only non-secret command/argument values. Do not put OAuth tokens, API
+keys, or connector credentials into the adapter, environment overrides, run
+directory, or target repository.
 
 ## Recommended Review Flow
 
