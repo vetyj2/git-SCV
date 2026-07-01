@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git-scv.invalid/schemas/work_order_binding.schema.json",
+  "title": "Git-SCV work order binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "producer",
+    "min_reader_version",
+    "run_id",
+    "work_order_sha256",
+    "artifact_manifest_sha256",
+    "source_fingerprint_hash",
+    "expires_on_source_change",
+    "oauth_token_stored",
+    "oauth_token_forwarded"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "work_order_binding" },
+    "schema_version": { "const": "2" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "producer": { "type": "object" },
+    "min_reader_version": { "type": "string" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "work_order_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "artifact_manifest_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_fingerprint_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "expires_on_source_change": { "const": true },
+    "oauth_token_stored": { "const": false },
+    "oauth_token_forwarded": { "const": false }
+  }
+}

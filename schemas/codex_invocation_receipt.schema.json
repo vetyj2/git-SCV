@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git-scv.invalid/schemas/codex_invocation_receipt.schema.json",
+  "title": "Git-SCV Codex invocation receipt JSONL item",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "receipt_kind",
+    "receipt_id",
+    "run_id",
+    "agent",
+    "auth_owner",
+    "oauth_token_stored",
+    "oauth_token_forwarded",
+    "job_id",
+    "work_order_sha256",
+    "source_fingerprint_hash",
+    "artifact_manifest_sha256",
+    "result_ref",
+    "target_repo_commands_executed"
+  ],
+  "properties": {
+    "receipt_kind": { "const": "codex-job-completion" },
+    "receipt_id": { "type": "string", "pattern": "^AR[0-9a-f]{8}$" },
+    "run_id": { "type": "string" },
+    "agent": { "type": "string", "minLength": 1 },
+    "auth_owner": { "const": "user-terminal-session" },
+    "oauth_token_stored": { "const": false },
+    "oauth_token_forwarded": { "const": false },
+    "job_id": { "type": "string", "pattern": "^J[0-9]{5}$" },
+    "input_id": { "type": ["string", "null"] },
+    "work_order_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_fingerprint_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "artifact_manifest_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "result_ref": { "type": "string", "pattern": "^analysis/job-results/.+\\.jsonl$" },
+    "target_repo_commands_executed": { "const": false }
+  }
+}

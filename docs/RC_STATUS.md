@@ -1,6 +1,6 @@
-# Git-SCV v0.3 RC Status
+# Git-SCV v0.3.1 RC Status
 
-This document records the current v0.3 release-candidate state against the
+This document records the current v0.3.1 release-candidate state against the
 2026-06-29 no-exec, no-leak, source-bound agent orchestration plan.
 
 ## Implemented
@@ -30,6 +30,18 @@ This document records the current v0.3 release-candidate state against the
   script relationships, gates, coverage, landmarks, and synthesis views.
 - Unit-analysis validation and synthesis/follow-up CLI.
 - Hermes wrapper cleanup delegated to Rust case delete/prune.
+- Public `git-scv review <repo-path> --goal <goal>` entrypoint for the
+  preflight plus slice-analysis workflow.
+- Public `git-scv continue <run-dir>` entrypoint that resumes progress and
+  writes the final user report only after runnable jobs are done.
+- Source-bound `work_order_binding.json` plus `analysis_jobs.jsonl` and
+  `codex_invocation_receipt.jsonl`.
+- Analysis job CLI for list/next/claim/complete/fail and safe content export.
+- Local runtime source pointer separated from public artifacts so default
+  repo-relative path privacy can coexist with later content export.
+- Stale-source blocking for job claim, content export, and job completion.
+- Terminal progress output with stage, source status, gate status, job counts,
+  final-report status, no-exec status, and next safe command.
 
 ## Documented
 
@@ -52,6 +64,11 @@ This document records the current v0.3 release-candidate state against the
 - Script wrapper contract against direct deletion and target package-manager
   execution.
 - Integration contract for the full RC artifact set.
+- `review -> analysis job claim -> export-content -> complete -> continue`
+  end-to-end flow.
+- Source change after review blocks job claim and marks analysis state stale.
+- Bulk `analysis import` completes only matching jobs and keeps final report
+  blocked while runnable jobs remain.
 
 ## Missing Before Stable
 
@@ -61,10 +78,14 @@ This document records the current v0.3 release-candidate state against the
 - Real gate-decision approval CLI lifecycle beyond the current source-bound
   decision artifact and `next-action` blocker.
 - Hard performance budgets in CI; current metrics are acceptance guidance.
+- Automated Codex/Claude process spawning backend. The current RC intentionally
+  uses the active user/Codex terminal session and stores no credentials.
 
 ## Public Release Blockers
 
 The tree must not be released if any item in `docs/RC_BLOCKERS.md` is present.
-At minimum, release requires `cargo fmt`, `cargo test`, `cargo clippy
---all-targets`, schema JSON validation, script syntax validation, and package
-verification to pass.
+At minimum, a GitHub tag release requires `cargo fmt`, `cargo test`, `cargo
+clippy --all-targets`, schema JSON validation, script syntax validation, secret
+scan, version consistency, and a fresh `cargo install --git ... --tag v0.3.1
+--locked` test after tagging. `cargo package --locked` is recommended for the
+GitHub tag release and required before any crates.io publish path.

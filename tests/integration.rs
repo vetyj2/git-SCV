@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const ARTIFACTS: [&str; 31] = [
+const ARTIFACTS: [&str; 45] = [
     "artifact_manifest.json",
     "brief.json",
     "brief.md",
@@ -26,6 +26,19 @@ const ARTIFACTS: [&str; 31] = [
     "gates.json",
     "gate_decisions.json",
     "slices.json",
+    "static_preflight_summary.json",
+    "sub_slices.json",
+    "sub_slices.jsonl",
+    "analysis_inputs.json",
+    "analysis_inputs.jsonl",
+    "analysis_state.json",
+    "analysis_events.jsonl",
+    "llm_backend.json",
+    "gpt_work_order.json",
+    "gpt_work_order.md",
+    "analysis_jobs.jsonl",
+    "codex_invocation_receipt.jsonl",
+    "work_order_binding.json",
     "review.json",
     "security.json",
     "supported_surfaces.json",
@@ -36,6 +49,7 @@ const ARTIFACTS: [&str; 31] = [
     "source_landmarks.json",
     "visualization_index.json",
     "analysis_plan.json",
+    "analysis_map.json",
     "cross_unit_analysis.json",
     "synthesis.json",
     "followup_plan.json",
@@ -136,9 +150,20 @@ fn t06_fixture_full_run() {
                 && item["sha256"].as_str().unwrap().starts_with("sha256:")),
         "{manifest}"
     );
+    assert!(
+        manifest["artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["name"] == "gpt_work_order.json"
+                && item["sha256"].as_str().unwrap().starts_with("sha256:")),
+        "{manifest}"
+    );
     let brief = read_json(&out, "brief.json");
     assert_eq!(brief["artifact_kind"], "brief", "{brief}");
     assert_eq!(brief["schema_version"], "2", "{brief}");
+    assert_eq!(brief["analysis_stage"], "pending-unit-analysis", "{brief}");
+    assert_eq!(brief["final_report_ready"], false, "{brief}");
     assert!(
         brief["artifact_manifest_sha256"]
             .as_str()
@@ -174,6 +199,10 @@ fn t06_fixture_full_run() {
         "{brief}"
     );
     let brief_md = fs::read_to_string(out.join("brief.md")).unwrap();
+    assert!(
+        brief_md.contains("analysis_stage: pending-unit-analysis"),
+        "{brief_md}"
+    );
     assert!(brief_md.contains("artifact_manifest_sha256"), "{brief_md}");
     assert!(brief_md.contains(NO_EXEC_SENTENCE), "{brief_md}");
     assert!(brief_md.contains("architecture.html"), "{brief_md}");
@@ -380,6 +409,106 @@ fn t06_fixture_full_run() {
         !serialized_slices.contains("node setup.js"),
         "언어별 깊은 분석 힌트는 파일 원문을 저장하면 안 된다"
     );
+    let static_preflight = read_json(&out, "static_preflight_summary.json");
+    assert_eq!(
+        static_preflight["analysis_stage"], "static-preflight-only",
+        "{static_preflight}"
+    );
+    assert_eq!(
+        static_preflight["unit_analysis_performed"], false,
+        "{static_preflight}"
+    );
+    let sub_slices = read_json(&out, "sub_slices.json");
+    assert!(
+        sub_slices["totals"]["sub_slices"].as_u64().unwrap() >= slice_files.len() as u64,
+        "{sub_slices}"
+    );
+    assert_eq!(
+        sub_slices["policy"]["raw_content_stored"], false,
+        "{sub_slices}"
+    );
+    let analysis_inputs = read_json(&out, "analysis_inputs.json");
+    assert_eq!(
+        analysis_inputs["raw_content_stored"], false,
+        "{analysis_inputs}"
+    );
+    assert!(
+        analysis_inputs["untrusted_content_notice"]
+            .as_str()
+            .unwrap()
+            .contains("untrusted"),
+        "{analysis_inputs}"
+    );
+    let analysis_state = read_json(&out, "analysis_state.json");
+    assert_eq!(
+        analysis_state["analysis_stage"], "pending-unit-analysis",
+        "{analysis_state}"
+    );
+    assert_eq!(
+        analysis_state["final_report_status"], "blocked-until-analysis-map-and-meta-synthesis",
+        "{analysis_state}"
+    );
+    let llm_backend = read_json(&out, "llm_backend.json");
+    assert_eq!(
+        llm_backend["target_repo_commands_executed"], false,
+        "{llm_backend}"
+    );
+    let gpt_work_order = read_json(&out, "gpt_work_order.json");
+    assert_eq!(
+        gpt_work_order["receipt_kind"], "gpt-orchestrator-work-order",
+        "{gpt_work_order}"
+    );
+    assert_eq!(
+        gpt_work_order["backend"], "manual-export",
+        "{gpt_work_order}"
+    );
+    assert_eq!(
+        gpt_work_order["cli_backend_available"], false,
+        "{gpt_work_order}"
+    );
+    assert_eq!(
+        gpt_work_order["external_codex_session_allowed"], true,
+        "{gpt_work_order}"
+    );
+    assert_eq!(
+        gpt_work_order["oauth_token_stored"], false,
+        "{gpt_work_order}"
+    );
+    assert_eq!(
+        gpt_work_order["oauth_token_forwarded"], false,
+        "{gpt_work_order}"
+    );
+    assert!(
+        gpt_work_order["credential_policy"]
+            .as_str()
+            .unwrap()
+            .contains("must not request, read, store, forward, or serialize OAuth tokens"),
+        "{gpt_work_order}"
+    );
+    assert_eq!(
+        gpt_work_order["raw_content_stored"], false,
+        "{gpt_work_order}"
+    );
+    assert_eq!(
+        gpt_work_order["target_repo_commands_executed"], false,
+        "{gpt_work_order}"
+    );
+    assert!(
+        gpt_work_order["ordered_steps"].as_array().unwrap().len() >= 5,
+        "{gpt_work_order}"
+    );
+    assert!(
+        gpt_work_order["gpt_handoff_prompt"]
+            .as_str()
+            .unwrap()
+            .contains("Read gpt_work_order.json first"),
+        "{gpt_work_order}"
+    );
+    let gpt_work_order_md = fs::read_to_string(out.join("gpt_work_order.md")).unwrap();
+    assert!(
+        gpt_work_order_md.contains("Ordered steps") && gpt_work_order_md.contains(NO_EXEC_SENTENCE),
+        "{gpt_work_order_md}"
+    );
 
     let dependencies = read_json(&out, "dependencies.json");
     assert!(
@@ -409,6 +538,10 @@ fn t06_fixture_full_run() {
     );
 
     let review = read_json(&out, "review.json");
+    assert_eq!(
+        review["analysis_stage"], "static-preflight-only",
+        "{review}"
+    );
     assert_eq!(review["verdict"], "insufficient-coverage");
     assert_eq!(review["safe_claim_made"], false, "{review}");
     assert_eq!(review["may_user_run_install"], false, "{review}");
@@ -499,6 +632,10 @@ fn t06_fixture_full_run() {
     );
 
     let security = read_json(&out, "security.json");
+    assert_eq!(
+        security["analysis_stage"], "static-preflight-only",
+        "{security}"
+    );
     assert_eq!(security["verdict"], review["verdict"], "{security}");
     assert_eq!(
         security["safe_claim_made"], review["safe_claim_made"],
@@ -654,6 +791,10 @@ fn t06_fixture_full_run() {
         "{architecture_map}"
     );
     assert_eq!(
+        architecture_map["analysis_stage"], "static-preflight-only",
+        "{architecture_map}"
+    );
+    assert_eq!(
         architecture_map["architecture_summary"]["safe_claim_made"],
         false
     );
@@ -693,6 +834,10 @@ fn t06_fixture_full_run() {
     );
     let visualization_index = read_json(&out, "visualization_index.json");
     assert_eq!(
+        visualization_index["analysis_stage"], "static-preflight-only",
+        "{visualization_index}"
+    );
+    assert_eq!(
         visualization_index["default_visualization"], "architecture.html",
         "{visualization_index}"
     );
@@ -718,7 +863,14 @@ fn t06_fixture_full_run() {
                 && item["kind"] == "architecture-visualization-synthesis"),
         "{analysis_plan}"
     );
+    let analysis_map = read_json(&out, "analysis_map.json");
+    assert_eq!(
+        analysis_map["analysis_stage"], "analysis-map-pending",
+        "{analysis_map}"
+    );
+    assert_eq!(analysis_map["map_complete"], false, "{analysis_map}");
     let cross = read_json(&out, "cross_unit_analysis.json");
+    assert_eq!(cross["analysis_stage"], "static-preflight-only", "{cross}");
     assert_eq!(cross["followup_required"], true, "{cross}");
     assert!(
         cross["synergy_findings"]
@@ -729,6 +881,14 @@ fn t06_fixture_full_run() {
         "{cross}"
     );
     let synthesis = read_json(&out, "synthesis.json");
+    assert_eq!(
+        synthesis["analysis_stage"], "static-preflight-only",
+        "{synthesis}"
+    );
+    assert_eq!(
+        synthesis["synthesis_kind"], "static-preflight-summary",
+        "{synthesis}"
+    );
     assert_eq!(synthesis["safe_claim_made"], false, "{synthesis}");
     assert_eq!(
         synthesis["architecture_visualization_complete"], true,
@@ -743,6 +903,10 @@ fn t06_fixture_full_run() {
         "{synthesis}"
     );
     let followup = read_json(&out, "followup_plan.json");
+    assert_eq!(
+        followup["analysis_stage"], "static-preflight-only",
+        "{followup}"
+    );
     assert!(
         followup["required_followups"]
             .as_array()
@@ -753,6 +917,10 @@ fn t06_fixture_full_run() {
     );
     let html = fs::read_to_string(out.join("report.html")).unwrap();
     assert!(html.contains("<!doctype html>"), "HTML 리포트 doctype 누락");
+    assert!(
+        html.contains("static-preflight") || html.contains("pending-unit-analysis"),
+        "HTML 리포트 분석 stage 누락: {html}"
+    );
     assert!(
         html.contains("insufficient-coverage"),
         "HTML 리포트 판정 누락"
@@ -1283,10 +1451,12 @@ fn t10_determinism_across_runs() {
         **n != "artifact_manifest.json"
             && **n != "brief.json"
             && **n != "brief.md"
+            && **n != "gpt_work_order.md"
             && **n != "run.json"
             && **n != "report.md"
             && **n != "report.html"
             && **n != "architecture.html"
+            && !n.ends_with(".jsonl")
     }) {
         let mut a = read_json(&out1, name);
         let mut b = read_json(&out2, name);
@@ -1301,6 +1471,16 @@ fn t10_determinism_across_runs() {
                 .as_object_mut()
                 .unwrap()
                 .remove("created_at");
+        }
+        if *name == "work_order_binding.json" {
+            a.as_object_mut().unwrap().remove("work_order_sha256");
+            b.as_object_mut().unwrap().remove("work_order_sha256");
+            a.as_object_mut()
+                .unwrap()
+                .remove("artifact_manifest_sha256");
+            b.as_object_mut()
+                .unwrap()
+                .remove("artifact_manifest_sha256");
         }
         assert_eq!(a, b, "산출물이 결정적이지 않다: {name}");
     }

@@ -459,6 +459,31 @@ fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
             &data.slices.run_id,
         ),
         (
+            "static_preflight_summary.json",
+            &data.static_preflight_summary.schema_version,
+            &data.static_preflight_summary.run_id,
+        ),
+        (
+            "sub_slices.json",
+            &data.sub_slices.schema_version,
+            &data.sub_slices.run_id,
+        ),
+        (
+            "analysis_inputs.json",
+            &data.analysis_inputs.schema_version,
+            &data.analysis_inputs.run_id,
+        ),
+        (
+            "analysis_state.json",
+            &data.analysis_state.schema_version,
+            &data.analysis_state.run_id,
+        ),
+        (
+            "llm_backend.json",
+            &data.llm_backend.schema_version,
+            &data.llm_backend.run_id,
+        ),
+        (
             "review.json",
             &data.review.schema_version,
             &data.review.run_id,
@@ -512,6 +537,11 @@ fn artifact_metadata(data: &RunData) -> Vec<(&'static str, &str, &str)> {
             "analysis_plan.json",
             &data.analysis_plan.schema_version,
             &data.analysis_plan.run_id,
+        ),
+        (
+            "analysis_map.json",
+            &data.analysis_map.schema_version,
+            &data.analysis_map.run_id,
         ),
         (
             "cross_unit_analysis.json",
@@ -979,7 +1009,7 @@ fn contains_url_query_or_fragment(text: &str) -> bool {
     })
 }
 
-const ARTIFACTS: [&str; 31] = [
+const ARTIFACTS: [&str; 36] = [
     "artifact_manifest.json",
     "brief.json",
     "brief.md",
@@ -994,6 +1024,11 @@ const ARTIFACTS: [&str; 31] = [
     "sensitive.json",
     "gates.json",
     "slices.json",
+    "gpt_work_order.json",
+    "gpt_work_order.md",
+    "analysis_jobs.jsonl",
+    "codex_invocation_receipt.jsonl",
+    "work_order_binding.json",
     "review.json",
     "security.json",
     "supported_surfaces.json",

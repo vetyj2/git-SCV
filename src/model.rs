@@ -20,6 +20,78 @@ pub const LOCAL_MAX_TOTAL_READ_BYTES: u64 = 52_428_800;
 pub const LOCAL_MAX_REPORTED_FINDINGS_PER_RULE: u64 = 1000;
 pub const LOCAL_MAX_SYMLINKS: u64 = 1000;
 
+// -------------------------------------------------------- analysis lifecycle
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "kebab-case")]
+pub enum AnalysisStage {
+    StaticPreflightOnly,
+    PendingOverslice,
+    PendingUnitAnalysis,
+    LlmAnalysisInProgress,
+    UnitAnalysisPartial,
+    UnitAnalysisComplete,
+    AnalysisMapPending,
+    AnalysisMapComplete,
+    MetaSynthesisPending,
+    MetaSynthesisComplete,
+    FinalReportComplete,
+    BlockedWaitingForGate,
+    BlockedStaleSource,
+    Failed,
+}
+
+impl AnalysisStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AnalysisStage::StaticPreflightOnly => "static-preflight-only",
+            AnalysisStage::PendingOverslice => "pending-overslice",
+            AnalysisStage::PendingUnitAnalysis => "pending-unit-analysis",
+            AnalysisStage::LlmAnalysisInProgress => "llm-analysis-in-progress",
+            AnalysisStage::UnitAnalysisPartial => "unit-analysis-partial",
+            AnalysisStage::UnitAnalysisComplete => "unit-analysis-complete",
+            AnalysisStage::AnalysisMapPending => "analysis-map-pending",
+            AnalysisStage::AnalysisMapComplete => "analysis-map-complete",
+            AnalysisStage::MetaSynthesisPending => "meta-synthesis-pending",
+            AnalysisStage::MetaSynthesisComplete => "meta-synthesis-complete",
+            AnalysisStage::FinalReportComplete => "final-report-complete",
+            AnalysisStage::BlockedWaitingForGate => "blocked-waiting-for-gate",
+            AnalysisStage::BlockedStaleSource => "blocked-stale-source",
+            AnalysisStage::Failed => "failed",
+        }
+    }
+
+    pub fn user_badge(self) -> &'static str {
+        match self {
+            AnalysisStage::StaticPreflightOnly => {
+                "Preflight complete - LLM unit analysis has not run"
+            }
+            AnalysisStage::PendingOverslice => "Preflight complete - overslice is pending",
+            AnalysisStage::PendingUnitAnalysis => {
+                "LLM-ready slices prepared - unit analysis pending"
+            }
+            AnalysisStage::LlmAnalysisInProgress => "LLM unit analysis in progress",
+            AnalysisStage::UnitAnalysisPartial => "Unit analysis partial",
+            AnalysisStage::UnitAnalysisComplete => "Unit analysis complete",
+            AnalysisStage::AnalysisMapPending => "Analysis map pending",
+            AnalysisStage::AnalysisMapComplete => "Analysis map complete",
+            AnalysisStage::MetaSynthesisPending => "Meta-synthesis pending",
+            AnalysisStage::MetaSynthesisComplete => "Meta-synthesis complete",
+            AnalysisStage::FinalReportComplete => "Final user report complete",
+            AnalysisStage::BlockedWaitingForGate => "Blocked waiting for user gate decision",
+            AnalysisStage::BlockedStaleSource => "Blocked because source is stale",
+            AnalysisStage::Failed => "Analysis failed",
+        }
+    }
+
+    pub fn allows_final_report(self) -> bool {
+        matches!(
+            self,
+            AnalysisStage::MetaSynthesisComplete | AnalysisStage::FinalReportComplete
+        )
+    }
+}
+
 // ---------------------------------------------------------------- run.json
 
 #[derive(Serialize, Clone, Debug)]
@@ -719,6 +791,7 @@ pub struct ReviewAction {
 pub struct ReviewArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
     pub verdict: String,
     pub safe_claim_made: bool,
     pub may_user_run_install: bool,
@@ -737,6 +810,7 @@ pub struct ReviewArtifact {
 pub struct SecurityArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
     pub verdict: String,
     pub safe_claim_made: bool,
     pub may_user_run_install: bool,
@@ -760,6 +834,9 @@ pub struct BriefArtifact {
     pub artifact_kind: String,
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub analysis_stage_label: String,
+    pub final_report_ready: bool,
     pub artifact_manifest_sha256: String,
     pub source_fingerprint_hash: String,
     pub verdict: String,
@@ -926,6 +1003,7 @@ pub struct ReachabilityScenariosArtifact {
 pub struct ArchitectureMapArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
     pub repo_shape: RepoShape,
     pub sectors: Vec<ArchitectureSector>,
     pub entrypoints: Vec<ArchitectureEntrypoint>,
@@ -1019,6 +1097,7 @@ pub struct SourceLandmarkGuard {
 pub struct VisualizationIndexArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
     pub default_visualization: String,
     pub views: Vec<VisualizationView>,
     pub privacy: VisualizationPrivacy,
@@ -1098,6 +1177,7 @@ pub struct SynergyFinding {
 pub struct CrossUnitAnalysisArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
     pub input_units: Vec<String>,
     pub aggregate_paths: Vec<AggregatePath>,
     pub synergy_findings: Vec<SynergyFinding>,
@@ -1118,6 +1198,8 @@ pub struct AggregateSafetyDiagnosis {
 pub struct SynthesisArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub synthesis_kind: String,
     pub verdict: String,
     pub safe_claim_made: bool,
     pub unit_analyses_complete: bool,
@@ -1152,10 +1234,246 @@ pub struct FollowupItem {
 pub struct FollowupPlanArtifact {
     pub schema_version: String,
     pub run_id: String,
+    pub analysis_stage: AnalysisStage,
     pub round: u64,
     pub reason: String,
     pub required_followups: Vec<FollowupItem>,
     pub blocked_until: Vec<String>,
+}
+
+// ------------------------------------------ orchestrator recovery artifacts
+
+#[derive(Serialize, Clone, Debug)]
+pub struct StaticPreflightSummaryArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub unit_analysis_performed: bool,
+    pub meta_synthesis_performed: bool,
+    pub final_user_report_ready: bool,
+    pub honest_status: String,
+    pub next_required_artifacts: Vec<String>,
+    pub user_warning: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SubSliceArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub policy: SubSlicePolicy,
+    pub totals: SubSliceTotals,
+    pub sub_slices: Vec<SubSlice>,
+    pub note: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SubSlicePolicy {
+    pub parent_artifact: String,
+    pub max_estimated_tokens_per_sub_slice: u64,
+    pub split_strategy: String,
+    pub raw_content_stored: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SubSliceTotals {
+    pub parent_slices: u64,
+    pub sub_slices: u64,
+    pub blocked_sub_slices: u64,
+    pub oversized_parent_slices: u64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SubSlice {
+    pub sub_slice_id: String,
+    pub parent_slice_id: String,
+    pub path: String,
+    pub line_start: Option<u64>,
+    pub line_end: Option<u64>,
+    pub byte_start: u64,
+    pub byte_end: u64,
+    pub estimated_tokens: u64,
+    pub priority: String,
+    pub model_input_status: String,
+    pub gate_status: String,
+    pub redaction_required: bool,
+    pub sensitive_candidate_overlap: bool,
+    pub execution_candidate_overlap: bool,
+    pub generated_or_vendor: bool,
+    pub lockfile: bool,
+    pub source_blob_or_file_hash: String,
+    pub blocked_reason: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisInputsArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub prompt_template_version: String,
+    pub untrusted_content_notice: String,
+    pub inputs: Vec<AnalysisInputBundle>,
+    pub excluded: Vec<AnalysisInputExclusion>,
+    pub raw_content_stored: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisInputBundle {
+    pub input_id: String,
+    pub sub_slice_id: String,
+    pub path: String,
+    pub included_range: String,
+    pub estimated_tokens: u64,
+    pub model_input_status: String,
+    pub source_fingerprint_hash: String,
+    pub artifact_manifest_sha256: String,
+    pub prompt_instructions: Vec<String>,
+    pub content_ref: String,
+    pub raw_content_included: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisInputExclusion {
+    pub sub_slice_id: String,
+    pub path: String,
+    pub reason: String,
+    pub required_gate: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisStateArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub source_fingerprint_hash: String,
+    pub artifact_manifest_sha256: String,
+    pub backend: String,
+    pub total_sub_slices: u64,
+    pub queued_sub_slices: u64,
+    pub completed_sub_slices: u64,
+    pub failed_sub_slices: u64,
+    pub blocked_sub_slices: u64,
+    pub current_sub_slice: Option<String>,
+    pub source_status: String,
+    pub gate_status: String,
+    pub final_report_status: String,
+    pub next_safe_command: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisEvent {
+    pub event_id: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub kind: String,
+    pub message: String,
+    pub retryable: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct LlmBackendArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub default_backend: String,
+    pub configured_backends: Vec<String>,
+    pub target_repo_commands_executed: bool,
+    pub note: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GptWorkOrderArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub receipt_kind: String,
+    pub purpose: String,
+    pub source_fingerprint_hash: String,
+    pub artifact_manifest_sha256: String,
+    pub backend: String,
+    pub cli_backend_available: bool,
+    pub external_codex_session_allowed: bool,
+    pub credential_policy: String,
+    pub oauth_token_stored: bool,
+    pub oauth_token_forwarded: bool,
+    pub raw_content_stored: bool,
+    pub target_repo_commands_executed: bool,
+    pub ordered_steps: Vec<GptWorkOrderStep>,
+    pub stop_conditions: Vec<String>,
+    pub resume_strategy: Vec<String>,
+    pub required_input_artifacts: Vec<String>,
+    pub expected_output_artifacts: Vec<String>,
+    pub gpt_handoff_prompt: String,
+    pub no_exec_statement: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct GptWorkOrderStep {
+    pub order: u64,
+    pub step_id: String,
+    pub title: String,
+    pub gpt_action: String,
+    pub command: Option<String>,
+    pub reads: Vec<String>,
+    pub writes: Vec<String>,
+    pub required_before: Vec<String>,
+    pub success_criteria: Vec<String>,
+    pub blocked_by: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalysisJob {
+    pub job_id: String,
+    pub run_id: String,
+    pub input_id: Option<String>,
+    pub sub_slice_id: String,
+    pub path: String,
+    pub included_range: String,
+    pub status: String,
+    pub priority: String,
+    pub blocked_by: Vec<String>,
+    pub required_gate: Option<String>,
+    pub claim_receipt_id: Option<String>,
+    pub result_ref: Option<String>,
+    pub source_fingerprint_hash: String,
+    pub work_order_sha256: String,
+    pub raw_content_stored: bool,
+    pub target_repo_commands_executed: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct CodexInvocationReceipt {
+    pub receipt_kind: String,
+    pub receipt_id: String,
+    pub run_id: String,
+    pub agent: String,
+    pub auth_owner: String,
+    pub oauth_token_stored: bool,
+    pub oauth_token_forwarded: bool,
+    pub job_id: String,
+    pub input_id: Option<String>,
+    pub work_order_sha256: String,
+    pub source_fingerprint_hash: String,
+    pub artifact_manifest_sha256: String,
+    pub result_ref: String,
+    pub target_repo_commands_executed: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct RepoAnalysisMapArtifact {
+    pub schema_version: String,
+    pub run_id: String,
+    pub analysis_stage: AnalysisStage,
+    pub unit_analysis_required: bool,
+    pub map_complete: bool,
+    pub source_artifacts: Vec<String>,
+    pub repo_purpose_candidates: Vec<String>,
+    pub major_modules: Vec<String>,
+    pub execution_flows: Vec<String>,
+    pub unresolved_relations: Vec<String>,
+    pub owner_questions: Vec<String>,
+    pub pre_use_checklist: Vec<String>,
+    pub note: String,
 }
 
 // ------------------------------------------------- 감지 단계의 중간 데이터
@@ -1221,6 +1539,15 @@ pub struct RunData {
     pub sensitive: SensitiveArtifact,
     pub gates: GateArtifact,
     pub slices: SliceArtifact,
+    pub static_preflight_summary: StaticPreflightSummaryArtifact,
+    pub sub_slices: SubSliceArtifact,
+    pub analysis_inputs: AnalysisInputsArtifact,
+    pub analysis_state: AnalysisStateArtifact,
+    pub analysis_events: Vec<AnalysisEvent>,
+    pub llm_backend: LlmBackendArtifact,
+    pub gpt_work_order: GptWorkOrderArtifact,
+    pub analysis_jobs: Vec<AnalysisJob>,
+    pub codex_invocation_receipts: Vec<CodexInvocationReceipt>,
     pub review: ReviewArtifact,
     pub security: SecurityArtifact,
     pub supported_surfaces: SupportedSurfacesArtifact,
@@ -1232,6 +1559,7 @@ pub struct RunData {
     pub source_landmarks: SourceLandmarksArtifact,
     pub visualization_index: VisualizationIndexArtifact,
     pub analysis_plan: AnalysisPlanArtifact,
+    pub analysis_map: RepoAnalysisMapArtifact,
     pub cross_unit_analysis: CrossUnitAnalysisArtifact,
     pub synthesis: SynthesisArtifact,
     pub followup_plan: FollowupPlanArtifact,

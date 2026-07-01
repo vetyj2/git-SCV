@@ -26,9 +26,8 @@ reason, and planned removal path.
 
 ## Current Known Warnings
 
-- `src/detect.rs::read_package_json`, `src/evidence.rs::EvidenceBuilder::add`,
-  and `src/review.rs::reason_codes` exceed clippy's default argument-count
-  preference. They are stable internal helpers in current parser/review paths;
-  refactor after v0.3 RC if their call sites change.
-- Test modules and test helpers intentionally use `unwrap`/`expect` for fixture
-  setup and assertion scaffolding. Production code should not copy that style.
+- Production `src/` warnings are expected to stay at zero for the current RC
+  policy surface.
+- Test modules, `cfg(test)` helpers, and test-only snapshot archive builders
+  intentionally use `unwrap`/`expect` for fixture setup and assertion
+  scaffolding. Production code should not copy that style.

@@ -7,6 +7,62 @@ Git-SCV is a no-exec inspection tool. It reports observed files, evidence,
 findings, skipped areas, and limits. It does not prove that a repository is
 safe.
 
+There are two layers:
+
+- Git-SCV core preflight: `inspect`, `snapshot`, `github plan`, source binding,
+  redaction, gates, slices, and static maps.
+- Git-SCV orchestrator: `review`, `continue`, `sub_slices.jsonl`,
+  `analysis_inputs.jsonl`, `analysis_jobs.jsonl`, `analysis job claim`,
+  `analysis export-content`, `analysis job complete`, `analyze --backend
+  manual-export`, `analysis import`, `watch`, `resume`, `gpt_work_order.json`,
+  analysis map, and final user report generation.
+
+Preflight artifacts are not completed semantic repository analysis. The stage
+is exposed as `analysis_stage` in brief, report, architecture, and analysis
+runtime artifacts.
+
+## Recommended Public Flow
+
+For the normal "can I install/build/test/run this unfamiliar repo?" workflow,
+start with the two public commands:
+
+```sh
+git-scv review <repo-path> --goal install
+git-scv review https://github.com/<owner>/<repo> --goal install
+git-scv continue <run-dir>
+```
+
+`review` creates the no-exec preflight artifacts, source-bound work order,
+analysis job queue, terminal progress panel, and `architecture.html`.
+`continue` resumes the run and generates `final_user_report.md/html` only after
+all runnable analysis jobs are completed.
+
+For GitHub URLs, `review` performs metadata-only planning through the GitHub
+tree API. It does not fetch file bodies or create slice-analysis jobs. It stops
+with `analysis_stage=github-remote-metadata-plan` and tells the user to pin the
+ref and acquire source before running full local review.
+
+Codex or another active agent session processes jobs with internal plumbing
+commands:
+
+```sh
+git-scv analysis job list <run-dir>
+git-scv analysis job claim <run-dir> --agent Codex
+git-scv analysis export-content <run-dir> --job <job-id>
+git-scv analysis job complete <run-dir> --job <job-id> --result <unit.jsonl>
+git-scv analysis job fail <run-dir> --job <job-id> --reason <code>
+```
+
+These commands never run target repository code. Before claiming, exporting, or
+completing a job, Git-SCV verifies the work-order binding and current source
+fingerprint. If the source changed after review, the job flow stops with
+`source-fingerprint-mismatch`; re-run `git-scv review`.
+
+`analysis export-content` reads only the claimed job's allowed repo-relative
+range, applies redaction, writes `analysis/content-export/<job-id>.json`, and
+keeps `raw_content_stored:false`. OAuth/API/connector credentials are never
+requested, stored, forwarded, serialized, or written into receipts.
+
 ## Local Inspection
 
 ```sh
@@ -55,9 +111,86 @@ For successful snapshot runs, `run/source.json` records sanitized snapshot
 metadata: the archive URL without query or fragment details, the verified
 SHA-256 digest, archive format, and extracted source path.
 
+## GitHub Remote Plan
+
+Use `github plan` to read GitHub tree metadata before clone or archive
+download:
+
+```sh
+git-scv github plan https://github.com/<owner>/<repo> --ref <sha-or-tag> --out <plan-dir>
+```
+
+This command does not clone the repository, download an archive, fetch file
+bodies, or execute target content. It writes `github_remote_plan.json` with
+tree entry counts, name-detected surfaces, truncation status, moving-ref
+warning, and a remote fingerprint. Branch names are treated as moving refs
+unless pinned by commit SHA.
+
+## Orchestrator Flow
+
+After `inspect`, Git-SCV writes LLM-oriented preparation artifacts:
+
+```text
+static_preflight_summary.json
+sub_slices.json
+sub_slices.jsonl
+analysis_inputs.json
+analysis_inputs.jsonl
+analysis_state.json
+analysis_events.jsonl
+llm_backend.json
+gpt_work_order.json
+gpt_work_order.md
+work_order_binding.json
+analysis_jobs.jsonl
+codex_invocation_receipt.jsonl
+analysis_map.json
+```
+
+Run manual export:
+
+```sh
+git-scv analyze <run-dir> --backend manual-export
+git-scv watch <run-dir>
+```
+
+The manual backend writes prompt/input bundles under
+`<run-dir>/analysis/manual-export/`. It does not call a model. The exported
+bundles reference safe, gate-aware input metadata and do not embed target file
+raw bodies.
+
+If no automated LLM CLI backend is available, use `gpt_work_order.json` or
+`gpt_work_order.md` as the handoff receipt. It records the exact ordered steps,
+stop conditions, required input artifacts, expected output artifacts, and the
+handoff prompt GPT should follow. The manual-export directory also receives
+`GPT_WORK_ORDER.md` so a GPT session that is given only the exported bundles
+still knows to process them in order and to stop at gates.
+
+Codex OAuth or other agent credentials are outside the Git-SCV artifact
+contract. They may be held temporarily by the user's terminal or active Codex
+session, but Git-SCV must not request, read, store, forward, or serialize those
+tokens. Do not put OAuth tokens, API keys, or connector credentials in the
+repository, run directory, work order, unit-analysis files, stdout, or stderr.
+
+Job-based analysis is the preferred runtime path because it keeps source,
+work-order, and Codex receipts tied to each slice. Bulk manual export remains
+available:
+
+```sh
+git-scv analysis import <run-dir> <unit-results.jsonl>
+git-scv resume <run-dir>
+git-scv report final <run-dir>
+```
+
+`analysis import` validates each unit-analysis record against the run's
+evidence IDs, path boundaries, and raw marker scan before appending
+`unit_analysis.jsonl`. It marks only matching queued/claimed jobs complete.
+`report final` is blocked while runnable jobs remain queued, claimed, or
+failed, and until `analysis_map.json` is complete.
+
 ## Recommended Review Flow
 
-1. Run `git-scv inspect <repo-path> --out <run-dir>`.
+1. Run `git-scv review <repo-path> --goal install`.
 2. Run `git-scv brief <run-dir>` and summarize `verdict`, `action_required`,
    required action ids, default model excluded path count,
    `artifact_manifest_sha256`, `source_fingerprint_hash`, and
@@ -82,20 +215,27 @@ SHA-256 digest, archive format, and extracted source path.
 10. Use `slices.json` as the path-only reading plan for later model input.
    Sensitive, automatic-execution, and execution-related candidates are excluded
    from default model input until separately approved.
-11. Use `review.json` for machine-readable totals, verdict, and required
+11. Use `gpt_work_order.md`, `sub_slices.jsonl`, `analysis_inputs.jsonl`, and
+   `analysis_jobs.jsonl` when actual LLM unit analysis is needed. Codex should
+   claim one job, export one allowed content range, write one unit-analysis
+   result, and complete that job before moving to the next.
+12. Use `analysis_state.json` and `git-scv watch <run-dir>` to tell whether the
+   run is only planned, blocked, in progress, imported, or ready for final
+   report generation.
+13. Use `review.json` for machine-readable totals, verdict, and required
    actions.
-12. Use `security.json` as a first-pass machine-readable security summary for
+14. Use `security.json` as a first-pass machine-readable security summary for
    other tools. It references the source artifacts and is not a safety
    guarantee.
-13. Use `connection_graph.json` and `analysis_plan.json` to see user-action to
+15. Use `connection_graph.json` and `analysis_plan.json` to see user-action to
    execution/model-input/sensitive-surface reachability and the planned unit
    and cross-unit review tasks.
-14. Use `cross_unit_analysis.json`, `synthesis.json`, and `followup_plan.json`
-   to see static aggregate scenarios, whole-repo diagnosis limits, and the
-   next follow-up tasks. These artifacts still do not claim install or
-   execution safety.
-15. Treat `secret-candidate` findings as unresolved review items.
-16. Ask for explicit approval before running any install, build, test, script,
+16. Use `cross_unit_analysis.json`, `synthesis.json`, and `followup_plan.json`
+   to see static aggregate scenarios and follow-up tasks. Unless
+   `analysis_stage` says meta-synthesis is complete, these artifacts are not a
+   completed semantic repository report.
+17. Treat `secret-candidate` findings as unresolved review items.
+18. Ask for explicit approval before running any install, build, test, script,
    hook, binary, or container command from the inspected repository.
 
 ## Case Packages
@@ -189,6 +329,16 @@ sensitive.json
 gates.json
 gate_decisions.json
 slices.json
+static_preflight_summary.json
+sub_slices.json
+sub_slices.jsonl
+analysis_inputs.json
+analysis_inputs.jsonl
+analysis_state.json
+analysis_events.jsonl
+llm_backend.json
+gpt_work_order.json
+gpt_work_order.md
 review.json
 security.json
 supported_surfaces.json
@@ -199,6 +349,7 @@ relation_map.json
 source_landmarks.json
 visualization_index.json
 analysis_plan.json
+analysis_map.json
 cross_unit_analysis.json
 synthesis.json
 followup_plan.json
@@ -238,40 +389,46 @@ Use them in this order:
    `gates.json`; each file may include a path or extension based language hint
    and deep-analysis candidate flag. Sensitive and execution candidates are
    excluded from default model input until separately approved.
-15. `review.json`: machine-readable verdict, totals including deep-analysis
+15. `gpt_work_order.json` / `gpt_work_order.md`: GPT handoff receipt for the
+   manual-export path. It lists ordered steps, stop conditions, required input
+   artifacts, expected output artifacts, and the exact handoff prompt an agent
+   should follow when no automated LLM CLI backend is available. It records
+   `oauth_token_stored:false` and `oauth_token_forwarded:false`; credentials
+   remain in the user's external terminal or Codex session.
+16. `review.json`: machine-readable verdict, totals including deep-analysis
    candidate count, required actions, and structured approval acknowledgements.
-16. `security.json`: machine-readable security summary for other tools. It
+17. `security.json`: machine-readable security summary for other tools. It
    mirrors verdict, counts, required actions, excluded paths, limitations, and
    source artifact references without reading new files or proving safety.
-17. `supported_surfaces.json`: parsed, name-detected, unsupported, and
+18. `supported_surfaces.json`: parsed, name-detected, unsupported, and
    parse-failed capability matrix.
-18. `connection_graph.json`: file, manifest, script, hook, workflow,
+19. `connection_graph.json`: file, manifest, script, hook, workflow,
    dependency, sensitive candidate, prompt-injection surface, and approval-gate
    graph.
-19. `reachability_scenarios.json`: user-action to reachable-node scenarios.
-20. `architecture_map.json`: repo shape, sectors, entrypoints, and architecture
+20. `reachability_scenarios.json`: user-action to reachable-node scenarios.
+21. `architecture_map.json`: repo shape, sectors, entrypoints, and architecture
    summary with `safe_claim_made:false`.
-21. `relation_map.json`: script, scenario, manifest, config, dependency, and
+22. `relation_map.json`: script, scenario, manifest, config, dependency, and
    gate relations.
-22. `source_landmarks.json`: recommended reading order, do-not-read-by-default,
+23. `source_landmarks.json`: recommended reading order, do-not-read-by-default,
    and gate-before-reading paths.
-23. `visualization_index.json`: views and privacy contract for
+24. `visualization_index.json`: views and privacy contract for
    `architecture.html`.
-24. `analysis_plan.json`: unit-analysis and cross-unit synthesis plan, including
+25. `analysis_plan.json`: unit-analysis and cross-unit synthesis plan, including
    allowed path boundaries and required cross-unit questions.
-25. `cross_unit_analysis.json`: static aggregate scenario analysis and
+26. `cross_unit_analysis.json`: static aggregate scenario analysis and
    synergy/follow-up markers such as sensitive-plus-execution overlap.
-26. `synthesis.json`: whole-repo diagnosis summary. It keeps
+27. `synthesis.json`: whole-repo diagnosis summary. It keeps
    `safe_claim_made:false` and records what cannot be concluded.
-27. `followup_plan.json`: concrete next-round tasks when gates, unsupported
+28. `followup_plan.json`: concrete next-round tasks when gates, unsupported
    surfaces, unresolved edges, or follow-up questions remain.
-28. `agent_receipt.json`: agent acknowledgement bound to manifest and source
+29. `agent_receipt.json`: agent acknowledgement bound to manifest and source
    fingerprint, created after `git-scv receipt create`.
-29. `report.md`: human-readable Markdown summary, including sensitive review
+30. `report.md`: human-readable Markdown summary, including sensitive review
    ack status and the required action list.
-30. `report.html`: browser-friendly human-readable summary, including
+31. `report.html`: browser-friendly human-readable summary, including
    sensitive review ack status and required ack strings.
-31. `architecture.html`: default interactive local viewer for overview,
+32. `architecture.html`: default interactive local viewer for overview,
    execution scenarios, script relations, gates, coverage, landmarks, and
    synthesis. It does not execute target repo HTML or JavaScript.
 

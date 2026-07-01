@@ -9,7 +9,7 @@
 
 use crate::errors::ScvError;
 use crate::model::{
-    ActionabilityBlocker, ArtifactManifest, BriefActionability, BriefArtifact,
+    ActionabilityBlocker, AnalysisJob, ArtifactManifest, BriefActionability, BriefArtifact,
     ManifestArtifactEntry, ManifestValidation, PathPrivacyMode, RunArtifact, RunData, ToolInfo,
     NO_EXEC_SENTENCE,
 };
@@ -31,6 +31,32 @@ pub fn write_all(out: &Path, data: &RunData) -> Result<(), ScvError> {
     write_json(out, "sensitive.json", &data.sensitive)?;
     write_json(out, "gates.json", &data.gates)?;
     write_json(out, "slices.json", &data.slices)?;
+    write_json(
+        out,
+        "static_preflight_summary.json",
+        &data.static_preflight_summary,
+    )?;
+    write_json(out, "sub_slices.json", &data.sub_slices)?;
+    write_jsonl(out, "sub_slices.jsonl", &data.sub_slices.sub_slices)?;
+    write_json(out, "analysis_inputs.json", &data.analysis_inputs)?;
+    write_jsonl(out, "analysis_inputs.jsonl", &data.analysis_inputs.inputs)?;
+    write_json(out, "analysis_state.json", &data.analysis_state)?;
+    write_jsonl(out, "analysis_events.jsonl", &data.analysis_events)?;
+    write_json(out, "llm_backend.json", &data.llm_backend)?;
+    write_json(out, "gpt_work_order.json", &data.gpt_work_order)?;
+    let work_order_sha256 = file_sha256(out, "gpt_work_order.json")?;
+    write_text(
+        out,
+        "gpt_work_order.md",
+        &render_gpt_work_order_markdown(&data.gpt_work_order),
+    )?;
+    let analysis_jobs = jobs_with_work_order_hash(&data.analysis_jobs, &work_order_sha256);
+    write_jsonl(out, "analysis_jobs.jsonl", &analysis_jobs)?;
+    write_jsonl(
+        out,
+        "codex_invocation_receipt.jsonl",
+        &data.codex_invocation_receipts,
+    )?;
     write_json(out, "review.json", &data.review)?;
     write_json(out, "security.json", &data.security)?;
     write_json(out, "supported_surfaces.json", &data.supported_surfaces)?;
@@ -46,6 +72,7 @@ pub fn write_all(out: &Path, data: &RunData) -> Result<(), ScvError> {
     write_json(out, "source_landmarks.json", &data.source_landmarks)?;
     write_json(out, "visualization_index.json", &data.visualization_index)?;
     write_json(out, "analysis_plan.json", &data.analysis_plan)?;
+    write_json(out, "analysis_map.json", &data.analysis_map)?;
     write_json(out, "cross_unit_analysis.json", &data.cross_unit_analysis)?;
     write_json(out, "synthesis.json", &data.synthesis)?;
     write_json(out, "followup_plan.json", &data.followup_plan)?;
@@ -64,6 +91,32 @@ pub fn write_artifact_manifest(out: &Path, data: &RunData) -> Result<(), ScvErro
     write_json(out, "artifact_manifest.json", &manifest)
 }
 
+pub fn write_work_order_binding(out: &Path, data: &RunData) -> Result<(), ScvError> {
+    let value = json!({
+        "artifact_kind": "work_order_binding",
+        "schema_version": "2",
+        "contract_version": "artifact-contract-v2",
+        "producer": {
+            "name": "git-scv",
+            "version": env!("CARGO_PKG_VERSION"),
+        },
+        "min_reader_version": env!("CARGO_PKG_VERSION"),
+        "run_id": data.run_id.clone(),
+        "work_order_sha256": file_sha256(out, "gpt_work_order.json")?,
+        "artifact_manifest_sha256": file_sha256(out, "artifact_manifest.json")?,
+        "source_fingerprint_hash": data
+            .source
+            .source_fingerprint
+            .as_ref()
+            .map(|fingerprint| fingerprint.fingerprint_hash.clone())
+            .unwrap_or_else(|| "sha256:unknown".into()),
+        "expires_on_source_change": true,
+        "oauth_token_stored": false,
+        "oauth_token_forwarded": false,
+    });
+    write_json(out, "work_order_binding.json", &value)
+}
+
 pub fn write_brief_artifacts(out: &Path, data: &RunData) -> Result<(), ScvError> {
     let artifact_manifest_sha256 = file_sha256(out, "artifact_manifest.json")?;
     let brief = build_brief_artifact(data, artifact_manifest_sha256);
@@ -71,11 +124,46 @@ pub fn write_brief_artifacts(out: &Path, data: &RunData) -> Result<(), ScvError>
     write_text(out, "brief.md", &render_brief_markdown(&brief))
 }
 
+fn jobs_with_work_order_hash(jobs: &[AnalysisJob], work_order_sha256: &str) -> Vec<AnalysisJob> {
+    jobs.iter()
+        .cloned()
+        .map(|mut job| {
+            job.work_order_sha256 = work_order_sha256.into();
+            job
+        })
+        .collect()
+}
+
 fn write_json<T: Serialize>(out: &Path, name: &str, value: &T) -> Result<(), ScvError> {
     let value = artifact_value_with_contract(name, value)?;
     let mut text = serde_json::to_string_pretty(&value)
         .map_err(|err| ScvError::Inspect(format!("artifacts: JSON 직렬화 실패: {name}: {err}")))?;
     text.push('\n');
+    write_text(out, name, &text)
+}
+
+fn write_jsonl<T: Serialize>(out: &Path, name: &str, values: &[T]) -> Result<(), ScvError> {
+    let mut text = String::new();
+    for value in values {
+        let mut value = serde_json::to_value(value).map_err(|err| {
+            ScvError::Inspect(format!("artifacts: JSONL 직렬화 실패: {name}: {err}"))
+        })?;
+        if let Some(object) = value.as_object_mut() {
+            object
+                .entry("contract_version")
+                .or_insert_with(|| Value::String("artifact-contract-v2".into()));
+            object.entry("producer").or_insert_with(|| {
+                json!({
+                    "name": "git-scv",
+                    "version": env!("CARGO_PKG_VERSION"),
+                })
+            });
+        }
+        text.push_str(&serde_json::to_string(&value).map_err(|err| {
+            ScvError::Inspect(format!("artifacts: JSONL 직렬화 실패: {name}: {err}"))
+        })?);
+        text.push('\n');
+    }
     write_text(out, name, &text)
 }
 
@@ -119,6 +207,13 @@ fn artifact_kind_for_name(name: &str) -> &str {
         "sensitive.json" => "sensitive",
         "gates.json" => "gates",
         "slices.json" => "slices",
+        "static_preflight_summary.json" => "static_preflight_summary",
+        "sub_slices.json" => "sub_slices",
+        "analysis_inputs.json" => "analysis_inputs",
+        "analysis_state.json" => "analysis_state",
+        "llm_backend.json" => "llm_backend",
+        "gpt_work_order.json" => "gpt_work_order",
+        "work_order_binding.json" => "work_order_binding",
         "review.json" => "review",
         "security.json" => "security",
         "supported_surfaces.json" => "supported_surfaces",
@@ -130,6 +225,7 @@ fn artifact_kind_for_name(name: &str) -> &str {
         "source_landmarks.json" => "source_landmarks",
         "visualization_index.json" => "visualization_index",
         "analysis_plan.json" => "analysis_plan",
+        "analysis_map.json" => "analysis_map",
         "cross_unit_analysis.json" => "cross_unit_analysis",
         "synthesis.json" => "synthesis",
         "followup_plan.json" => "followup_plan",
@@ -210,6 +306,9 @@ fn build_brief_artifact(data: &RunData, artifact_manifest_sha256: String) -> Bri
         artifact_kind: "brief".into(),
         schema_version: "2".into(),
         run_id: data.run_id.clone(),
+        analysis_stage: data.analysis_state.analysis_stage,
+        analysis_stage_label: data.analysis_state.analysis_stage.user_badge().into(),
+        final_report_ready: data.analysis_state.analysis_stage.allows_final_report(),
         artifact_manifest_sha256,
         source_fingerprint_hash: data
             .source
@@ -337,6 +436,9 @@ fn render_brief_markdown(brief: &BriefArtifact) -> String {
     format!(
         "# git-scv brief\n\n\
 - run_id: {run_id}\n\
+- analysis_stage: {analysis_stage}\n\
+- analysis_stage_label: {analysis_stage_label}\n\
+- final_report_ready: {final_report_ready}\n\
 - artifact_manifest_sha256: {artifact_manifest_sha256}\n\
 - source_fingerprint_hash: {source_fingerprint_hash}\n\
 - verdict: {verdict}\n\
@@ -363,6 +465,9 @@ fn render_brief_markdown(brief: &BriefArtifact) -> String {
 ## no-exec\n\n\
 {no_exec_statement}\n",
         run_id = brief.run_id.as_str(),
+        analysis_stage = brief.analysis_stage.as_str(),
+        analysis_stage_label = brief.analysis_stage_label.as_str(),
+        final_report_ready = brief.final_report_ready,
         artifact_manifest_sha256 = brief.artifact_manifest_sha256.as_str(),
         source_fingerprint_hash = brief.source_fingerprint_hash.as_str(),
         verdict = brief.verdict.as_str(),
@@ -385,6 +490,84 @@ fn render_brief_markdown(brief: &BriefArtifact) -> String {
         slices_over_token_limit = brief.counts.slices_over_token_limit,
         no_exec_statement = brief.no_exec_statement.as_str(),
     )
+}
+
+fn render_gpt_work_order_markdown(order: &crate::model::GptWorkOrderArtifact) -> String {
+    let mut text = format!(
+        "# Git-SCV GPT work order\n\n\
+- run_id: {run_id}\n\
+- analysis_stage: {analysis_stage}\n\
+- receipt_kind: {receipt_kind}\n\
+- backend: {backend}\n\
+- cli_backend_available: {cli_backend_available}\n\
+- external_codex_session_allowed: {external_codex_session_allowed}\n\
+- credential_policy: {credential_policy}\n\
+- oauth_token_stored: {oauth_token_stored}\n\
+- oauth_token_forwarded: {oauth_token_forwarded}\n\
+- source_fingerprint_hash: {source_fingerprint_hash}\n\
+- artifact_manifest_sha256: {artifact_manifest_sha256}\n\
+- raw_content_stored: {raw_content_stored}\n\
+- target_repo_commands_executed: {target_repo_commands_executed}\n\n\
+## Purpose\n\n\
+{purpose}\n\n\
+## GPT handoff prompt\n\n\
+{gpt_handoff_prompt}\n\n\
+## Ordered steps\n\n",
+        run_id = order.run_id,
+        analysis_stage = order.analysis_stage.as_str(),
+        receipt_kind = order.receipt_kind,
+        backend = order.backend,
+        cli_backend_available = order.cli_backend_available,
+        external_codex_session_allowed = order.external_codex_session_allowed,
+        credential_policy = order.credential_policy,
+        oauth_token_stored = order.oauth_token_stored,
+        oauth_token_forwarded = order.oauth_token_forwarded,
+        source_fingerprint_hash = order.source_fingerprint_hash,
+        artifact_manifest_sha256 = order.artifact_manifest_sha256,
+        raw_content_stored = order.raw_content_stored,
+        target_repo_commands_executed = order.target_repo_commands_executed,
+        purpose = order.purpose,
+        gpt_handoff_prompt = order.gpt_handoff_prompt,
+    );
+    for step in &order.ordered_steps {
+        text.push_str(&format!(
+            "### {order_num}. {title}\n\n\
+- step_id: {step_id}\n\
+- gpt_action: {gpt_action}\n\
+- command: {command}\n\
+- reads: {reads}\n\
+- writes: {writes}\n\
+- required_before: {required_before}\n\
+- success_criteria: {success_criteria}\n\
+- blocked_by: {blocked_by}\n\n",
+            order_num = step.order,
+            title = step.title,
+            step_id = step.step_id,
+            gpt_action = step.gpt_action,
+            command = step.command.as_deref().unwrap_or("GPT/manual step"),
+            reads = step.reads.join(", "),
+            writes = step.writes.join(", "),
+            required_before = step.required_before.join(", "),
+            success_criteria = step.success_criteria.join(", "),
+            blocked_by = if step.blocked_by.is_empty() {
+                "none".into()
+            } else {
+                step.blocked_by.join(", ")
+            },
+        ));
+    }
+    text.push_str("## Stop conditions\n\n");
+    for item in &order.stop_conditions {
+        text.push_str(&format!("- {item}\n"));
+    }
+    text.push_str("\n## Resume strategy\n\n");
+    for item in &order.resume_strategy {
+        text.push_str(&format!("- {item}\n"));
+    }
+    text.push_str("\n## No-exec\n\n");
+    text.push_str(&order.no_exec_statement);
+    text.push('\n');
+    text
 }
 
 pub(crate) fn file_sha256(out: &Path, name: &str) -> Result<String, ScvError> {
@@ -420,7 +603,7 @@ fn path_privacy_label(mode: PathPrivacyMode) -> &'static str {
     }
 }
 
-pub const MANIFEST_HASHED_ARTIFACTS: [&str; 28] = [
+pub const MANIFEST_HASHED_ARTIFACTS: [&str; 41] = [
     "run.json",
     "source.json",
     "inventory.json",
@@ -432,6 +615,18 @@ pub const MANIFEST_HASHED_ARTIFACTS: [&str; 28] = [
     "sensitive.json",
     "gates.json",
     "slices.json",
+    "static_preflight_summary.json",
+    "sub_slices.json",
+    "sub_slices.jsonl",
+    "analysis_inputs.json",
+    "analysis_inputs.jsonl",
+    "analysis_state.json",
+    "analysis_events.jsonl",
+    "llm_backend.json",
+    "gpt_work_order.json",
+    "gpt_work_order.md",
+    "analysis_jobs.jsonl",
+    "codex_invocation_receipt.jsonl",
     "review.json",
     "security.json",
     "supported_surfaces.json",
@@ -443,6 +638,7 @@ pub const MANIFEST_HASHED_ARTIFACTS: [&str; 28] = [
     "source_landmarks.json",
     "visualization_index.json",
     "analysis_plan.json",
+    "analysis_map.json",
     "cross_unit_analysis.json",
     "synthesis.json",
     "followup_plan.json",

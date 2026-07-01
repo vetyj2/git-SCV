@@ -53,6 +53,10 @@ fn architecture_html_is_generated_without_raw_target_html_js_or_secret_like_valu
 
     let html = fs::read_to_string(out.join("architecture.html")).unwrap();
     assert!(html.contains("Git-SCV Architecture & Safety Synthesis"));
+    assert!(
+        html.contains("pending-unit-analysis") || html.contains("static-preflight-only"),
+        "{html}"
+    );
     assert!(html.contains("Execution Scenario Reachability"));
     assert!(html.contains("Script Relationship View"));
     assert!(html.contains("Security Gate Overlay"));

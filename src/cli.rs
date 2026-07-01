@@ -29,6 +29,12 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Subcommand {
+    /// 낯선 repo를 설치/빌드/실행 전에 no-exec Codex slice review 세션으로 시작한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Review(ReviewArgs),
+    /// 중단된 review 세션을 다음 안전 단계로 이어간다
+    #[command(after_help = NO_EXEC_HELP)]
+    Continue(RunDirArgs),
     /// 저장소를 무실행으로 검사하고 산출물 디렉터리를 만든다
     #[command(after_help = NO_EXEC_HELP)]
     Inspect(InspectArgs),
@@ -59,6 +65,65 @@ enum Subcommand {
     /// followup_plan artifact를 검증한다
     #[command(after_help = NO_EXEC_HELP)]
     ValidateFollowup(RunDirArgs),
+    /// LLM 분석 런타임을 준비하거나 수동 export backend를 실행한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Analyze(AnalyzeArgs),
+    /// 분석 결과를 가져오거나 분석 패키지 상태를 다룬다
+    #[command(after_help = NO_EXEC_HELP)]
+    Analysis(AnalysisArgs),
+    /// analysis_state/events 기반 진행 상태를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Watch(RunDirArgs),
+    /// 중단된 분석을 재개할 수 있는지 점검한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Resume(RunDirArgs),
+    /// 사용자 보고서를 생성하거나 상태를 점검한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Report(ReportArgs),
+    /// GitHub remote-first metadata planning
+    #[command(after_help = NO_EXEC_HELP)]
+    Github(GithubArgs),
+}
+
+#[derive(clap::Args)]
+pub struct ReviewArgs {
+    /// 검사할 로컬 저장소 경로. URL 입력은 metadata plan 이후 source acquisition 단계에서 처리한다.
+    pub target: PathBuf,
+    /// 사용자가 판단하려는 목표
+    #[arg(long, value_enum, default_value = "install")]
+    pub goal: ReviewGoal,
+    /// case package 대신 직접 쓸 출력 디렉터리
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+    /// artifact/report에 저장할 경로 privacy 정책
+    #[arg(long, value_enum, default_value = "repo-relative")]
+    pub path_privacy: PathPrivacyMode,
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum ReviewGoal {
+    Install,
+    Build,
+    Test,
+    Run,
+    OpenVscode,
+    Docker,
+    GeneralReview,
+}
+
+impl ReviewGoal {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReviewGoal::Install => "install",
+            ReviewGoal::Build => "build",
+            ReviewGoal::Test => "test",
+            ReviewGoal::Run => "run",
+            ReviewGoal::OpenVscode => "open-vscode",
+            ReviewGoal::Docker => "docker",
+            ReviewGoal::GeneralReview => "general-review",
+        }
+    }
 }
 
 #[derive(clap::Args)]
@@ -236,6 +301,147 @@ pub struct RunDirArgs {
 }
 
 #[derive(clap::Args)]
+pub struct AnalyzeArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// 분석 backend. 현재 안전 기본값은 manual-export
+    #[arg(long, default_value = "manual-export")]
+    pub backend: String,
+}
+
+#[derive(clap::Args)]
+pub struct AnalysisArgs {
+    #[command(subcommand)]
+    pub command: AnalysisSubcommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum AnalysisSubcommand {
+    /// unit-analysis JSON 또는 JSONL을 가져와 검증 후 누적한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Import(AnalysisImportArgs),
+    /// analysis job queue를 조회하거나 갱신한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Job(AnalysisJobArgs),
+    /// claim된 job의 허용 content range를 redacted export로 만든다
+    #[command(after_help = NO_EXEC_HELP)]
+    ExportContent(AnalysisExportContentArgs),
+}
+
+#[derive(clap::Args)]
+pub struct AnalysisImportArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// unit-analysis JSON 또는 JSONL 파일
+    pub input: PathBuf,
+}
+
+#[derive(clap::Args)]
+pub struct AnalysisJobArgs {
+    #[command(subcommand)]
+    pub command: AnalysisJobSubcommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum AnalysisJobSubcommand {
+    /// job queue 목록과 집계를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    List(RunDirArgs),
+    /// 다음 queued job 하나를 출력한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Next(RunDirArgs),
+    /// 다음 queued job 하나를 agent가 claim한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Claim(AnalysisJobClaimArgs),
+    /// job 결과를 검증하고 complete 처리한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Complete(AnalysisJobCompleteArgs),
+    /// job을 실패 처리한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Fail(AnalysisJobFailArgs),
+}
+
+#[derive(clap::Args)]
+pub struct AnalysisJobClaimArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// job을 claim하는 agent 이름
+    #[arg(long, default_value = "Codex")]
+    pub agent: String,
+}
+
+#[derive(clap::Args)]
+pub struct AnalysisJobCompleteArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// 완료할 job id
+    #[arg(long)]
+    pub job: String,
+    /// unit-analysis JSON 파일
+    #[arg(long)]
+    pub result: PathBuf,
+}
+
+#[derive(clap::Args)]
+pub struct AnalysisJobFailArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// 실패 처리할 job id
+    #[arg(long)]
+    pub job: String,
+    /// 실패 reason code
+    #[arg(long)]
+    pub reason: String,
+}
+
+#[derive(clap::Args)]
+pub struct AnalysisExportContentArgs {
+    /// inspect run directory 또는 case package directory
+    pub run_dir: PathBuf,
+    /// export할 claimed job id
+    #[arg(long)]
+    pub job: String,
+}
+
+#[derive(clap::Args)]
+pub struct ReportArgs {
+    #[command(subcommand)]
+    pub command: ReportSubcommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum ReportSubcommand {
+    /// analysis_map 기반 최종 사용자 보고서를 생성한다
+    #[command(after_help = NO_EXEC_HELP)]
+    Final(RunDirArgs),
+}
+
+#[derive(clap::Args)]
+pub struct GithubArgs {
+    #[command(subcommand)]
+    pub command: GithubSubcommand,
+}
+
+#[derive(clap::Subcommand)]
+pub enum GithubSubcommand {
+    /// GitHub tree metadata로 pre-download analysis plan을 만든다
+    #[command(after_help = NO_EXEC_HELP)]
+    Plan(GithubPlanArgs),
+}
+
+#[derive(clap::Args)]
+pub struct GithubPlanArgs {
+    /// GitHub repository URL. 예: https://github.com/owner/repo
+    pub repo_url: String,
+    /// Git ref, tag, branch, or commit. Branch refs are recorded as moving refs.
+    #[arg(long, default_value = "HEAD")]
+    pub r#ref: String,
+    /// 출력 디렉터리
+    #[arg(long)]
+    pub out: PathBuf,
+}
+
+#[derive(clap::Args)]
 pub struct ValidateUnitArgs {
     /// inspect run directory 또는 case package directory
     pub run_dir: PathBuf,
@@ -244,6 +450,8 @@ pub struct ValidateUnitArgs {
 }
 
 pub enum Invocation {
+    Review(ReviewArgs),
+    Continue(RunDirArgs),
     Inspect(InspectArgs),
     Snapshot(SnapshotArgs),
     Brief(BriefArgs),
@@ -263,10 +471,24 @@ pub enum Invocation {
     Synthesize(RunDirArgs),
     FollowupPlan(RunDirArgs),
     ValidateFollowup(RunDirArgs),
+    Analyze(AnalyzeArgs),
+    AnalysisImport(AnalysisImportArgs),
+    AnalysisJobList(RunDirArgs),
+    AnalysisJobNext(RunDirArgs),
+    AnalysisJobClaim(AnalysisJobClaimArgs),
+    AnalysisJobComplete(AnalysisJobCompleteArgs),
+    AnalysisJobFail(AnalysisJobFailArgs),
+    AnalysisExportContent(AnalysisExportContentArgs),
+    Watch(RunDirArgs),
+    Resume(RunDirArgs),
+    ReportFinal(RunDirArgs),
+    GithubPlan(GithubPlanArgs),
 }
 
 pub fn parse() -> Invocation {
     match Cli::parse().command {
+        Subcommand::Review(args) => Invocation::Review(args),
+        Subcommand::Continue(args) => Invocation::Continue(args),
         Subcommand::Inspect(args) => Invocation::Inspect(args),
         Subcommand::Snapshot(args) => Invocation::Snapshot(args),
         Subcommand::Brief(args) => Invocation::Brief(args),
@@ -290,6 +512,26 @@ pub fn parse() -> Invocation {
         Subcommand::Synthesize(args) => Invocation::Synthesize(args),
         Subcommand::FollowupPlan(args) => Invocation::FollowupPlan(args),
         Subcommand::ValidateFollowup(args) => Invocation::ValidateFollowup(args),
+        Subcommand::Analyze(args) => Invocation::Analyze(args),
+        Subcommand::Analysis(args) => match args.command {
+            AnalysisSubcommand::Import(args) => Invocation::AnalysisImport(args),
+            AnalysisSubcommand::Job(args) => match args.command {
+                AnalysisJobSubcommand::List(args) => Invocation::AnalysisJobList(args),
+                AnalysisJobSubcommand::Next(args) => Invocation::AnalysisJobNext(args),
+                AnalysisJobSubcommand::Claim(args) => Invocation::AnalysisJobClaim(args),
+                AnalysisJobSubcommand::Complete(args) => Invocation::AnalysisJobComplete(args),
+                AnalysisJobSubcommand::Fail(args) => Invocation::AnalysisJobFail(args),
+            },
+            AnalysisSubcommand::ExportContent(args) => Invocation::AnalysisExportContent(args),
+        },
+        Subcommand::Watch(args) => Invocation::Watch(args),
+        Subcommand::Resume(args) => Invocation::Resume(args),
+        Subcommand::Report(args) => match args.command {
+            ReportSubcommand::Final(args) => Invocation::ReportFinal(args),
+        },
+        Subcommand::Github(args) => match args.command {
+            GithubSubcommand::Plan(args) => Invocation::GithubPlan(args),
+        },
     }
 }
 

@@ -1,8 +1,25 @@
-# Git-SCV v0.3 RC Acceptance
+# Git-SCV v0.3.1 RC Acceptance
+
+The v0.3.1 release candidate is accepted only when the tagged GitHub install
+flow, no-exec/no-leak contracts, source-bound analysis job workflow, and final
+report blocking behavior all match the CLI and generated artifacts.
 
 ## A. New-User Local Inspect Flow
 
 - Install with a tag or reviewed revision.
+- Run `git-scv review <repo-path> --goal install` for the recommended
+  slice-review workflow.
+- Confirm terminal progress shows `analysis_stage`, source status, gate status,
+  completed/queued/claimed/failed/blocked job counts, final report readiness,
+  `target_repo_commands_executed=false`, and the next safe command.
+- Confirm `work_order_binding.json`, `analysis_jobs.jsonl`, `gpt_work_order.md`,
+  `brief.md`, and `architecture.html` exist.
+- A Codex/Hermes session can claim one job, export one allowed content range,
+  write one unit-analysis JSON/JSONL result, complete that job, and repeat.
+- `git-scv continue <run-dir>` must not create `final_user_report.md/html`
+  while runnable jobs are queued, claimed, or failed.
+- After all runnable jobs are completed, `git-scv continue <run-dir>` writes
+  `final_user_report.md` and `final_user_report.html`.
 - Run `git-scv case create <repo-path>`.
 - Run `git-scv case brief <case-id>`.
 - Open `architecture.html` from the case package.
@@ -25,12 +42,28 @@
   `run/architecture.html`.
 - Confirm source fingerprint and artifact manifest exist.
 
+## B2. GitHub Metadata Plan Flow
+
+- Run `git-scv review https://github.com/<owner>/<repo> --goal install` or
+  `git-scv github plan ...`.
+- Git-SCV must not clone, download archives, fetch file bodies, or execute
+  target content.
+- Output must clearly say `analysis_stage=github-remote-metadata-plan` or
+  `source_acquisition=github-remote-tree`.
+- Output must tell the user to pin a ref and acquire source before full local
+  slice review.
+- The metadata plan must not be presented as completed semantic repository
+  analysis.
+
 ## C. Agent Flow
 
 Hermes or another agent must be able to handle:
 
 - "Inspect this repo with Git-SCV first."
+- "Review this repo slice by slice before I install it."
 - "Summarize only the brief."
+- "Show current Git-SCV progress."
+- "Continue the Git-SCV review."
 - "Explain the repo structure from architecture.html."
 - "Tell me whether install is currently blocked and why."
 - "Show execution candidates before model-input approval."
@@ -42,6 +75,12 @@ The agent must summarize the brief before requesting model-input approval or
 execution approval. It must create an agent receipt before a blocked next
 action can proceed.
 
+For the job runtime, the agent must use `analysis job claim`,
+`analysis export-content`, and `analysis job complete` rather than browsing
+arbitrary repo files by hand. Claim/export/complete must fail on stale source.
+`codex_invocation_receipt.jsonl` must record `oauth_token_stored:false`,
+`oauth_token_forwarded:false`, and `target_repo_commands_executed:false`.
+
 ## D. No-Leak Flow
 
 The RC fails if any artifact, stdout, stderr, report, or HTML contains raw:
@@ -52,6 +91,7 @@ The RC fails if any artifact, stdout, stderr, report, or HTML contains raw:
 - Raw sensitive content.
 - Raw command-line arguments.
 - Raw target HTML/script injection payload.
+- OAuth/API/connector credentials.
 
 ## E. No-Exec Flow
 
@@ -63,6 +103,10 @@ test, script, hook, binary, workflow, package-manager, or container commands.
 After inspection, changing the source must make:
 
 - `git-scv case verify-source <case-id>` fail.
+- `git-scv analysis job claim <run-dir> --agent Codex` fail for review runs
+  with a local runtime pointer.
+- `git-scv analysis export-content <run-dir> --job <job-id>` fail if the source
+  changed after the job was claimed.
 - Prior gate decisions and receipts stale for execution purposes.
 - `git-scv case next-action <case-id> --action install --argv <program> <arg>`
   return `allowed:false` with `stale-source`.

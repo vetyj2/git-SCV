@@ -33,6 +33,17 @@ pub fn validate_unit(args: ValidateUnitArgs) -> Result<(), ScvError> {
     Ok(())
 }
 
+pub(crate) fn validate_unit_value_for_import(run_dir: &Path, unit: &Value) -> Result<(), ScvError> {
+    ensure_run_dir(run_dir)?;
+    let evidence_ids = read_evidence_ids(run_dir)?;
+    let result = validate_unit_value(unit, &evidence_ids);
+    if result.errors.is_empty() {
+        Ok(())
+    } else {
+        Err(ScvError::Validation(result.errors))
+    }
+}
+
 pub fn validate_units(args: RunDirArgs) -> Result<(), ScvError> {
     ensure_run_dir(&args.run_dir)?;
     let dir = args.run_dir.join("unit-analysis");

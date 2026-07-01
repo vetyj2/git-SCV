@@ -10,6 +10,16 @@ pub struct EvidenceStore {
     items: Vec<Evidence>,
 }
 
+pub struct EvidenceInput<'a> {
+    pub path: &'a str,
+    pub kind: EvidenceKind,
+    pub lines: Option<LineRange>,
+    pub summary: &'a str,
+    pub json_pointer: Option<String>,
+    pub signal_labels: Vec<String>,
+    pub excerpt: Option<&'a str>,
+}
+
 impl Default for EvidenceStore {
     fn default() -> Self {
         Self::new()
@@ -22,25 +32,16 @@ impl EvidenceStore {
     }
 
     /// 추가하고 부여된 id("E0001"…)를 돌려준다.
-    pub fn add(
-        &mut self,
-        path: &str,
-        kind: EvidenceKind,
-        lines: Option<LineRange>,
-        summary: &str,
-        json_pointer: Option<String>,
-        signal_labels: Vec<String>,
-        excerpt: Option<&str>,
-    ) -> String {
+    pub fn add(&mut self, input: EvidenceInput<'_>) -> String {
         let id = format!("E{:04}", self.items.len() + 1);
-        let normalized_lines = if kind == EvidenceKind::ContentLine {
-            lines
+        let normalized_lines = if input.kind == EvidenceKind::ContentLine {
+            input.lines
         } else {
             None
         };
         let (redacted_excerpt, redaction_applied, redaction_labels, signal_labels) =
-            if kind == EvidenceKind::ContentLine {
-                let redacted = excerpt.map(redact_command_excerpt);
+            if input.kind == EvidenceKind::ContentLine {
+                let redacted = input.excerpt.map(redact_command_excerpt);
                 let redaction_labels = redacted
                     .as_ref()
                     .map(|value| {
@@ -51,7 +52,7 @@ impl EvidenceStore {
                             .collect()
                     })
                     .unwrap_or_default();
-                let mut signal_labels = signal_labels;
+                let mut signal_labels = input.signal_labels;
                 if redacted
                     .as_ref()
                     .is_some_and(|value| value.labels().contains(&SecretLikeLabel::NetworkCommand))
@@ -72,7 +73,7 @@ impl EvidenceStore {
                 signal_labels.sort();
                 signal_labels.dedup();
                 (
-                    Some(redacted_command_placeholder(json_pointer.as_deref())),
+                    Some(redacted_command_placeholder(input.json_pointer.as_deref())),
                     redacted
                         .as_ref()
                         .is_some_and(|value| !value.labels().is_empty()),
@@ -80,22 +81,22 @@ impl EvidenceStore {
                     signal_labels,
                 )
             } else {
-                (None, false, Vec::new(), signal_labels)
+                (None, false, Vec::new(), input.signal_labels)
             };
 
-        let json_pointer = if kind == EvidenceKind::ContentLine {
-            json_pointer
+        let json_pointer = if input.kind == EvidenceKind::ContentLine {
+            input.json_pointer
         } else {
             None
         };
 
         self.items.push(Evidence {
             id: id.clone(),
-            path: path.into(),
-            kind,
+            path: input.path.into(),
+            kind: input.kind,
             json_pointer,
             lines: normalized_lines,
-            summary: summary.into(),
+            summary: input.summary.into(),
             value_stored: false,
             redacted_excerpt,
             signal_labels,

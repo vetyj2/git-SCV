@@ -1,4 +1,4 @@
-# Git-SCV v0.3 RC Blockers
+# Git-SCV v0.3.1 RC Blockers
 
 Do not publish the release if any of these are true.
 
@@ -6,6 +6,17 @@ Do not publish the release if any of these are true.
   version.
 - A documented CLI command is missing.
 - The documented artifact set does not match generated artifacts.
+- `git-scv review <repo-path> --goal install` cannot create a source-bound
+  review run with `analysis_jobs.jsonl` and terminal progress.
+- `git-scv continue <run-dir>` creates a final user report while runnable jobs
+  are still queued, claimed, or failed.
+- `analysis job claim`, `analysis export-content`, or `analysis job complete`
+  proceeds after the source fingerprint changed.
+- `analysis export-content` exports a blocked job or a job that was not claimed.
+- `analysis job complete` stores an absolute result-file path instead of a
+  run-relative `analysis/job-results/...` ref.
+- `codex_invocation_receipt.jsonl`, `work_order_binding.json`, stdout, stderr,
+  or reports indicate OAuth/API tokens were stored or forwarded.
 - Raw token, URL query, URL fragment, URL userinfo, secret-like marker, raw
   lifecycle command, raw sensitive content, or raw HTML injection appears in
   artifacts, stdout, stderr, report.md, report.html, or architecture.html.
@@ -25,7 +36,9 @@ Do not publish the release if any of these are true.
   target repo HTML/JS.
 - `case show` or `case status` leaks the absolute source path by default.
 - `cargo fmt`, `cargo test`, `cargo clippy --all-targets`, schema validation,
-  script syntax checks, or package verification fail.
+  script syntax checks, secret scan, version consistency check, or fresh
+  `cargo install --git ... --tag v0.3.1 --locked` test fail.
+- `cargo package --locked` fails for a crates.io release path.
 
 Non-blockers before stable:
 

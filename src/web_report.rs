@@ -106,6 +106,10 @@ pub fn render(data: &RunData) -> String {
       padding-left: 12px;
       font-weight: 700;
     }}
+    .stage {{
+      border-left: 5px solid var(--warn);
+      background: #fff7ed;
+    }}
   </style>
 </head>
 <body>
@@ -113,6 +117,12 @@ pub fn render(data: &RunData) -> String {
     <header>
       <h1>git-scv 검사 리포트</h1>
       <p class="note">범위가 제한된 무실행 검토 출력입니다. 안전 보증이 아닙니다.</p>
+      <div class="item stage">
+        <div class="label">analysis stage</div>
+        <div class="value">{analysis_stage}</div>
+        <p class="note">{analysis_stage_label}</p>
+        <p class="note">이 HTML은 정적 preflight 리포트입니다. LLM unit-analysis와 meta-synthesis 완료 보고서가 아닙니다.</p>
+      </div>
       <div class="meta">
         <div class="item"><div class="label">실행 번호</div><div class="value">{run_id}</div></div>
         <div class="item"><div class="label">도구</div><div class="value">git-scv {version}</div></div>
@@ -168,6 +178,8 @@ pub fn render(data: &RunData) -> String {
 </html>
 "#,
         run_id = escape(&data.run_id),
+        analysis_stage = data.analysis_state.analysis_stage.as_str(),
+        analysis_stage_label = escape(data.analysis_state.analysis_stage.user_badge()),
         version = env!("CARGO_PKG_VERSION"),
         started = escape(&data.started_at),
         finished = escape(&data.finished_at),

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git-scv.invalid/schemas/analysis_content_export.schema.json",
+  "title": "Git-SCV analysis content export",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "producer",
+    "job_id",
+    "path",
+    "included_range",
+    "redacted_content",
+    "raw_content_stored",
+    "redaction_applied",
+    "redaction_labels",
+    "target_repo_commands_executed"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "analysis_content_export" },
+    "schema_version": { "const": "1" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "producer": { "type": "object" },
+    "job_id": { "type": "string", "pattern": "^J[0-9]{5}$" },
+    "path": { "type": "string", "minLength": 1 },
+    "included_range": { "type": "string", "pattern": "^bytes:[0-9]+-[0-9]+$" },
+    "redacted_content": { "type": "string" },
+    "raw_content_stored": { "const": false },
+    "redaction_applied": { "type": "boolean" },
+    "redaction_labels": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "target_repo_commands_executed": { "const": false }
+  }
+}

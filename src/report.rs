@@ -33,6 +33,10 @@ pub fn render(data: &RunData) -> String {
 
     format!(
         "# git-scv 검사 리포트\n\n\
+- analysis_stage: {analysis_stage}\n\
+- analysis_stage_label: {analysis_stage_label}\n\
+- final_report_ready: {final_report_ready}\n\
+- 주의: 이 문서는 정적 no-exec preflight 리포트이며, LLM unit-analysis와 meta-synthesis 완료 보고서가 아니다.\n\n\
 - 실행 번호: {run_id}\n\
 - 도구: git-scv {version}\n\
 - 시작: {started_at} / 종료: {finished_at}\n\n\
@@ -83,6 +87,9 @@ pub fn render(data: &RunData) -> String {
 ## 무실행 확인\n\n\
 {NO_EXEC_SENTENCE}\n",
         run_id = data.run_id.as_str(),
+        analysis_stage = data.analysis_state.analysis_stage.as_str(),
+        analysis_stage_label = data.analysis_state.analysis_stage.user_badge(),
+        final_report_ready = data.analysis_state.analysis_stage.allows_final_report(),
         version = env!("CARGO_PKG_VERSION"),
         started_at = data.started_at.as_str(),
         finished_at = data.finished_at.as_str(),

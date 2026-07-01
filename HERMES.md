@@ -3,22 +3,28 @@
 This guide is for Hermes-style coding agents that use Git-SCV as a preflight
 repository inspection tool.
 
-Git-SCV does not call a model. It creates deterministic artifacts that an agent
-can read before deciding which files may be sent to a model or whether a user
-must approve the next action.
+Git-SCV core does not spawn or authenticate a model. It creates deterministic
+artifacts and a source-bound analysis job queue that an active Codex/Hermes
+session can consume one slice at a time before deciding whether install, build,
+test, run, model input, or user approval is appropriate.
+
+OAuth/API/connector credentials remain only in the user's terminal, Codex, or
+connector session. Git-SCV must not request, read, store, forward, serialize, or
+write those credentials into the repository, run directory, artifacts, stdout,
+or stderr.
 
 ## Install Or Update Git-SCV
 
-Install the latest GitHub version:
+Install the current tagged GitHub release:
 
 ```sh
-cargo install --git https://github.com/vetyj2/git-SCV --locked
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.1 --locked
 ```
 
-Update to the latest GitHub version:
+Update to the current tagged GitHub release:
 
 ```sh
-cargo install --git https://github.com/vetyj2/git-SCV --locked --force
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.1 --locked --force
 ```
 
 Install a specific reviewed revision:
@@ -26,6 +32,9 @@ Install a specific reviewed revision:
 ```sh
 cargo install --git https://github.com/vetyj2/git-SCV --rev <commit-sha> --locked --force
 ```
+
+Installing from a moving branch is an advanced, unstable bootstrap path and
+should not be the default Hermes recommendation.
 
 Check the installed binary:
 
@@ -52,6 +61,25 @@ does not call a model. It only:
 - prints the report and JSON artifact paths Hermes should read
 - removes one case package or the whole local case root on request
 
+For the newer slice-review runtime, prefer the Rust CLI directly:
+
+```sh
+git-scv review <repo-path> --goal install
+git-scv continue <run-dir>
+```
+
+Hermes/Codex then processes the internal queue with:
+
+```sh
+git-scv analysis job claim <run-dir> --agent Codex
+git-scv analysis export-content <run-dir> --job <job-id>
+git-scv analysis job complete <run-dir> --job <job-id> --result <unit.jsonl>
+```
+
+Those commands verify the work-order binding and source fingerprint before
+content export or completion. If the source changed, stop and re-run
+`git-scv review`.
+
 The default case root is:
 
 ```text
@@ -68,8 +96,8 @@ GIT_SCV_CASE_ROOT=/path/to/cases scripts/git-scv-hermes.sh inspect <repo-path>
 
 | User intent | Hermes action |
 | --- | --- |
-| "Install Git-SCV" | `scripts/git-scv-hermes.sh install` or `cargo install --git https://github.com/vetyj2/git-SCV --locked` |
-| "Update Git-SCV" | `scripts/git-scv-hermes.sh update-latest` or `cargo install --git https://github.com/vetyj2/git-SCV --locked --force` |
+| "Install Git-SCV" | `scripts/git-scv-hermes.sh install` or `cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.1 --locked` |
+| "Update Git-SCV" | `scripts/git-scv-hermes.sh update-latest` or `cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.1 --locked --force` |
 | "Inspect this local repo" | `scripts/git-scv-hermes.sh inspect <repo-path> [label]` |
 | "Inspect this verified archive" | `scripts/git-scv-hermes.sh snapshot <archive-url> <sha256> [label]` |
 | "Summarize the mandatory safety gate" | `scripts/git-scv-hermes.sh brief <case-dir>` |
@@ -106,10 +134,31 @@ long report can be skipped. A normal local case looks like:
     sensitive.json
     gates.json
     slices.json
+    static_preflight_summary.json
+    sub_slices.json
+    sub_slices.jsonl
+    analysis_inputs.json
+    analysis_inputs.jsonl
+    analysis_state.json
+    analysis_events.jsonl
+    llm_backend.json
+    gpt_work_order.json
+    gpt_work_order.md
+    work_order_binding.json
+    analysis_jobs.jsonl
+    codex_invocation_receipt.jsonl
     review.json
     security.json
+    supported_surfaces.json
+    gate_decisions.json
     connection_graph.json
+    reachability_scenarios.json
+    architecture_map.json
+    relation_map.json
+    source_landmarks.json
+    visualization_index.json
     analysis_plan.json
+    analysis_map.json
     cross_unit_analysis.json
     synthesis.json
     followup_plan.json
@@ -179,7 +228,9 @@ and `slices.json` decide what may be sent to a model.
 
 ## Model Input Rules
 
-Hermes may send file contents to a model only after checking `slices.json`.
+Hermes may send file contents to a model only after checking `slices.json` or,
+preferably, after claiming an `analysis_jobs.jsonl` job and exporting that
+job's allowed content range with `git-scv analysis export-content`.
 
 - Use only files with `default_model_input=true` by default.
 - Do not send sensitive candidates to a model unless the user gives the required
@@ -187,6 +238,9 @@ Hermes may send file contents to a model only after checking `slices.json`.
 - Do not send automatic-execution or execution-related candidates to a model
   before showing their paths to the user and receiving approval.
 - Treat `oversized-slice-review` as a planning warning, not a safety verdict.
+- Process one claimed job at a time. Write a unit-analysis JSON/JSONL result,
+  complete the job, and let Git-SCV record `codex_invocation_receipt.jsonl`
+  with `oauth_token_stored:false` and `target_repo_commands_executed:false`.
 
 ## Execution Rules
 

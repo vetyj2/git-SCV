@@ -29,17 +29,17 @@ pub fn detect(inventory: &InventoryArtifact, root: &Path) -> Result<DetectOutcom
         apply_name_rules(entry, &mut detections);
 
         if is_file(entry) && name(entry) == "package.json" && !is_secret_candidate(entry) {
-            read_package_json(
+            let mut context = PackageJsonReadContext {
                 root,
-                entry,
-                &mut detections,
-                &mut read_files,
-                &mut binary_skips,
-                &mut dependency_manifests,
-                &mut limitations,
-                &mut limit_reason_codes,
-                &mut total_read_bytes,
-            )?;
+                detections: &mut detections,
+                read_files: &mut read_files,
+                binary_skips: &mut binary_skips,
+                dependency_manifests: &mut dependency_manifests,
+                limitations: &mut limitations,
+                limit_reason_codes: &mut limit_reason_codes,
+                total_read_bytes: &mut total_read_bytes,
+            };
+            read_package_json(entry, &mut context)?;
         }
     }
 
@@ -110,35 +110,43 @@ fn apply_name_rules(entry: &Entry, detections: &mut Vec<Detection>) {
     }
 }
 
+struct PackageJsonReadContext<'a> {
+    root: &'a Path,
+    detections: &'a mut Vec<Detection>,
+    read_files: &'a mut Vec<ReadFile>,
+    binary_skips: &'a mut u64,
+    dependency_manifests: &'a mut Vec<DependencyManifest>,
+    limitations: &'a mut Vec<String>,
+    limit_reason_codes: &'a mut Vec<String>,
+    total_read_bytes: &'a mut u64,
+}
+
 fn read_package_json(
-    root: &Path,
     entry: &Entry,
-    detections: &mut Vec<Detection>,
-    read_files: &mut Vec<ReadFile>,
-    binary_skips: &mut u64,
-    dependency_manifests: &mut Vec<DependencyManifest>,
-    limitations: &mut Vec<String>,
-    limit_reason_codes: &mut Vec<String>,
-    total_read_bytes: &mut u64,
+    context: &mut PackageJsonReadContext<'_>,
 ) -> Result<(), ScvError> {
     if entry.size.unwrap_or(0) > LOCAL_MAX_READ_BYTES_PER_MANIFEST {
-        push_limit_reason(limit_reason_codes, "manifest-read-limit-exceeded");
-        limitations.push(format!(
+        push_limit_reason(context.limit_reason_codes, "manifest-read-limit-exceeded");
+        context.limitations.push(format!(
             "package.json 읽기 한도를 초과해 파싱하지 못했다: {}",
             entry.path
         ));
         return Ok(());
     }
-    if total_read_bytes.saturating_add(entry.size.unwrap_or(0)) > LOCAL_MAX_TOTAL_READ_BYTES {
-        push_limit_reason(limit_reason_codes, "total-read-limit-exceeded");
-        limitations.push(format!(
+    if context
+        .total_read_bytes
+        .saturating_add(entry.size.unwrap_or(0))
+        > LOCAL_MAX_TOTAL_READ_BYTES
+    {
+        push_limit_reason(context.limit_reason_codes, "total-read-limit-exceeded");
+        context.limitations.push(format!(
             "총 manifest 읽기 한도를 초과해 파싱하지 못했다: {}",
             entry.path
         ));
         return Ok(());
     }
 
-    let path = root.join(&entry.path);
+    let path = context.root.join(&entry.path);
     let bytes = std::fs::read(&path).map_err(|err| {
         ScvError::Inspect(format!(
             "detect: package.json을 읽지 못했다: {}: {err}",
@@ -146,26 +154,30 @@ fn read_package_json(
         ))
     })?;
 
-    read_files.push(ReadFile {
+    context.read_files.push(ReadFile {
         path: entry.path.clone(),
         bytes: bytes.len() as u64,
     });
-    *total_read_bytes = total_read_bytes.saturating_add(bytes.len() as u64);
+    *context.total_read_bytes = context.total_read_bytes.saturating_add(bytes.len() as u64);
 
     if bytes.iter().take(8192).any(|byte| *byte == 0) {
-        *binary_skips += 1;
+        *context.binary_skips += 1;
         return Ok(());
     }
 
     let parsed = match serde_json::from_slice::<serde_json::Value>(&bytes) {
         Ok(value) => value,
         Err(_) => {
-            limitations.push(format!("package.json을 파싱하지 못했다: {}", entry.path));
+            context
+                .limitations
+                .push(format!("package.json을 파싱하지 못했다: {}", entry.path));
             return Ok(());
         }
     };
 
-    dependency_manifests.push(dependency_manifest(&entry.path, &parsed));
+    context
+        .dependency_manifests
+        .push(dependency_manifest(&entry.path, &parsed));
 
     let Some(scripts) = parsed.get("scripts").and_then(|value| value.as_object()) else {
         return Ok(());
@@ -175,7 +187,7 @@ fn read_package_json(
     for key in ["preinstall", "install", "postinstall", "prepare"] {
         if scripts.contains_key(key) {
             let (line, excerpt) = find_key_line(&source, key);
-            detections.push(Detection {
+            context.detections.push(Detection {
                 rule: RuleId::D02,
                 path: entry.path.clone(),
                 line,

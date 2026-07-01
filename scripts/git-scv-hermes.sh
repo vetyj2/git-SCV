@@ -3,8 +3,8 @@ set -euo pipefail
 
 REPO_URL="${GIT_SCV_REPO_URL:-https://github.com/vetyj2/git-SCV}"
 CASE_ROOT="${GIT_SCV_CASE_ROOT:-${TMPDIR:-/tmp}/git-scv-cases}"
-INSTALL_TAG="${GIT_SCV_INSTALL_TAG:-v0.3.0}"
-UPDATE_TAG="${GIT_SCV_UPDATE_TAG:-v0.3.0}"
+INSTALL_TAG="${GIT_SCV_INSTALL_TAG:-v0.3.1}"
+UPDATE_TAG="${GIT_SCV_UPDATE_TAG:-v0.3.1}"
 
 die() {
   printf 'error: %s\n' "$*" >&2

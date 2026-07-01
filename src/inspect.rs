@@ -168,6 +168,27 @@ fn run_inner(
     ));
     let gates = crate::gates::build(&detect_outcome.detections, &sensitive, &run_id);
     let slices = crate::slices::build(&inventory, &sectors, &gates, &run_id);
+    let source_fingerprint_hash = source
+        .source_fingerprint
+        .as_ref()
+        .map(|fingerprint| fingerprint.fingerprint_hash.clone())
+        .unwrap_or_else(|| "sha256:unknown".into());
+    let static_preflight_summary = crate::orchestrator::static_preflight_summary(&run_id);
+    let sub_slices = crate::orchestrator::sub_slices(&slices, &run_id);
+    let analysis_inputs =
+        crate::orchestrator::analysis_inputs(&sub_slices, &source_fingerprint_hash, &run_id);
+    let analysis_state =
+        crate::orchestrator::analysis_state(&sub_slices, &source_fingerprint_hash, &run_id);
+    let analysis_events = crate::orchestrator::analysis_events(&run_id);
+    let llm_backend = crate::orchestrator::llm_backend(&run_id);
+    let gpt_work_order =
+        crate::orchestrator::gpt_work_order(&sub_slices, &source_fingerprint_hash, &run_id);
+    let analysis_jobs = crate::orchestrator::analysis_jobs(
+        &analysis_inputs,
+        &sub_slices,
+        &source_fingerprint_hash,
+        &run_id,
+    );
     let connection_graph = crate::graph::connection_graph(&inventory, &gates, &slices, &run_id);
     let reachability_scenarios =
         crate::visualization::reachability_scenarios(&connection_graph, &run_id);
@@ -186,6 +207,7 @@ fn run_inner(
         crate::visualization::source_landmarks(&sectors, &gates, &sensitive, &run_id);
     let visualization_index = crate::visualization::visualization_index(&connection_graph, &run_id);
     let analysis_plan = crate::graph::analysis_plan(&inventory, &gates, &sensitive, &run_id);
+    let analysis_map = crate::orchestrator::analysis_map_pending(&run_id);
     let review = crate::review::build(
         &findings,
         &gates,
@@ -225,6 +247,15 @@ fn run_inner(
         sensitive,
         gates,
         slices,
+        static_preflight_summary,
+        sub_slices,
+        analysis_inputs,
+        analysis_state,
+        analysis_events,
+        llm_backend,
+        gpt_work_order,
+        analysis_jobs,
+        codex_invocation_receipts: Vec::new(),
         review,
         security,
         supported_surfaces,
@@ -236,6 +267,7 @@ fn run_inner(
         source_landmarks,
         visualization_index,
         analysis_plan,
+        analysis_map,
         cross_unit_analysis,
         synthesis,
         followup_plan,
@@ -285,6 +317,7 @@ fn run_inner(
     );
     crate::artifacts::write_run_json(&args.out, &run)?;
     crate::artifacts::write_artifact_manifest(&args.out, &data)?;
+    crate::artifacts::write_work_order_binding(&args.out, &data)?;
     if let Err(err) = crate::artifacts::write_brief_artifacts(&args.out, &data) {
         return fail(
             &args.out,
@@ -310,23 +343,18 @@ fn run_inner(
         );
         crate::artifacts::write_run_json(&args.out, &run)?;
         crate::artifacts::write_artifact_manifest(&args.out, &data)?;
+        crate::artifacts::write_work_order_binding(&args.out, &data)?;
         crate::artifacts::write_brief_artifacts(&args.out, &data)?;
         return Err(ScvError::Validation(items));
     }
 
-    let repo = fs::canonicalize(&args.repo_path).map_err(|err| {
-        ScvError::Inspect(format!(
-            "inspect: 검사 대상 경로를 정규화하지 못했다: {}: {err}",
-            args.repo_path.display()
-        ))
-    })?;
     let out = fs::canonicalize(&args.out).map_err(|err| {
         ScvError::Inspect(format!(
             "inspect: 출력 경로를 정규화하지 못했다: {}: {err}",
             args.out.display()
         ))
     })?;
-    println!("검사 완료: {}", repo.display());
+    println!("검사 완료: {}", data.source.resolved_path);
     println!("산출물: {}", out.display());
     Ok(())
 }

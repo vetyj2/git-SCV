@@ -4,8 +4,8 @@
 //! 하지 않는다.
 
 use crate::model::{
-    Category, CoverageArtifact, FindingsArtifact, GateArtifact, Priority, ReviewAction,
-    ReviewArtifact, ReviewCounts, SecurityArtifact, SliceArtifact, NO_EXEC_SENTENCE,
+    AnalysisStage, Category, CoverageArtifact, FindingsArtifact, GateArtifact, Priority,
+    ReviewAction, ReviewArtifact, ReviewCounts, SecurityArtifact, SliceArtifact, NO_EXEC_SENTENCE,
     SCHEMA_VERSION,
 };
 use std::collections::BTreeSet;
@@ -60,20 +60,21 @@ pub fn build(
         || gates.execution_command_review.approval_required;
     let unsupported_surface = coverage_has_insufficient_surface(coverage);
     let insufficient_coverage = !coverage.limit_reason_codes.is_empty() || unsupported_surface;
-    let reason_codes = reason_codes(
-        findings.findings.len() as u64,
+    let reason_codes = reason_codes(ReviewReasonInputs {
+        findings: findings.findings.len() as u64,
         sensitive_gate,
         execution_gate,
         slices_over_token_limit,
         insufficient_coverage,
-        &coverage.limit_reason_codes,
+        limit_reason_codes: &coverage.limit_reason_codes,
         unsupported_surface,
         dirty_unknown,
-    );
+    });
 
     ReviewArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        analysis_stage: AnalysisStage::StaticPreflightOnly,
         verdict: verdict(
             findings.findings.len() as u64,
             sensitive_gate,
@@ -121,36 +122,38 @@ fn verdict(
     }
 }
 
-fn reason_codes(
+struct ReviewReasonInputs<'a> {
     findings: u64,
     sensitive_gate: bool,
     execution_gate: bool,
     slices_over_token_limit: u64,
     insufficient_coverage: bool,
-    limit_reason_codes: &[String],
+    limit_reason_codes: &'a [String],
     unsupported_surface: bool,
     dirty_unknown: bool,
-) -> Vec<String> {
+}
+
+fn reason_codes(input: ReviewReasonInputs<'_>) -> Vec<String> {
     let mut codes = Vec::new();
-    if insufficient_coverage {
-        codes.extend(limit_reason_codes.iter().cloned());
+    if input.insufficient_coverage {
+        codes.extend(input.limit_reason_codes.iter().cloned());
     }
-    if unsupported_surface {
+    if input.unsupported_surface {
         codes.push("unsupported-surface-name-detected".into());
     }
-    if sensitive_gate {
+    if input.sensitive_gate {
         codes.push("sensitive-candidates-present".into());
     }
-    if execution_gate {
+    if input.execution_gate {
         codes.push("execution-candidates-present".into());
     }
-    if slices_over_token_limit > 0 {
+    if input.slices_over_token_limit > 0 {
         codes.push("slice-token-limit-exceeded".into());
     }
-    if findings > 0 {
+    if input.findings > 0 {
         codes.push("findings-present".into());
     }
-    if dirty_unknown {
+    if input.dirty_unknown {
         codes.push("source-dirty-unknown".into());
     }
     if codes.is_empty() {
@@ -211,6 +214,7 @@ pub fn build_security(
     SecurityArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        analysis_stage: review.analysis_stage,
         verdict: review.verdict.clone(),
         safe_claim_made: review.safe_claim_made,
         may_user_run_install: review.may_user_run_install,

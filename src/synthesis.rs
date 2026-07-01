@@ -1,10 +1,10 @@
 //! Minimal cross-unit synthesis from first-party Git-SCV artifacts.
 
 use crate::model::{
-    AggregatePath, AggregateSafetyDiagnosis, ArchitectureMapArtifact, ArchitectureSynthesis,
-    ConnectionGraphArtifact, CoverageArtifact, CrossUnitAnalysisArtifact, FollowupItem,
-    FollowupPlanArtifact, GateArtifact, ReviewArtifact, SourceLandmarksArtifact, SynergyFinding,
-    SynthesisArtifact, SCHEMA_VERSION,
+    AggregatePath, AggregateSafetyDiagnosis, AnalysisStage, ArchitectureMapArtifact,
+    ArchitectureSynthesis, ConnectionGraphArtifact, CoverageArtifact, CrossUnitAnalysisArtifact,
+    FollowupItem, FollowupPlanArtifact, GateArtifact, ReviewArtifact, SourceLandmarksArtifact,
+    SynergyFinding, SynthesisArtifact, SCHEMA_VERSION,
 };
 
 pub fn cross_unit_analysis(
@@ -52,6 +52,7 @@ pub fn cross_unit_analysis(
     CrossUnitAnalysisArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        analysis_stage: AnalysisStage::StaticPreflightOnly,
         input_units: vec!["analysis_plan.units".into()],
         aggregate_paths,
         synergy_findings,
@@ -100,6 +101,8 @@ pub fn synthesis(
     SynthesisArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        analysis_stage: AnalysisStage::StaticPreflightOnly,
+        synthesis_kind: "static-preflight-summary".into(),
         verdict: review.verdict.clone(),
         safe_claim_made: false,
         unit_analyses_complete: false,
@@ -172,6 +175,7 @@ pub fn followup_plan(
     FollowupPlanArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        analysis_stage: AnalysisStage::StaticPreflightOnly,
         round: 1,
         reason: if required_followups.is_empty() {
             "no-followup-required-within-current-static-scope".into()

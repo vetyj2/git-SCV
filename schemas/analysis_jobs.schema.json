@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git-scv.invalid/schemas/analysis_jobs.schema.json",
+  "title": "Git-SCV analysis job JSONL item",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "job_id",
+    "run_id",
+    "sub_slice_id",
+    "path",
+    "included_range",
+    "status",
+    "source_fingerprint_hash",
+    "work_order_sha256",
+    "raw_content_stored",
+    "target_repo_commands_executed"
+  ],
+  "properties": {
+    "job_id": { "type": "string", "pattern": "^J[0-9]{5}$" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "input_id": { "type": ["string", "null"] },
+    "sub_slice_id": { "type": "string", "minLength": 1 },
+    "path": { "type": "string", "minLength": 1 },
+    "included_range": { "type": "string", "minLength": 1 },
+    "status": {
+      "enum": ["queued", "claimed", "completed", "failed", "blocked"]
+    },
+    "priority": { "type": "string" },
+    "blocked_by": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "required_gate": { "type": ["string", "null"] },
+    "claim_receipt_id": { "type": ["string", "null"] },
+    "result_ref": { "type": ["string", "null"] },
+    "source_fingerprint_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "work_order_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "raw_content_stored": { "const": false },
+    "target_repo_commands_executed": { "const": false }
+  }
+}

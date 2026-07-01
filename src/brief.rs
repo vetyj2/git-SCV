@@ -43,6 +43,9 @@ struct Security {
 #[derive(Deserialize)]
 struct BriefSummary {
     run_id: String,
+    analysis_stage: Option<String>,
+    analysis_stage_label: Option<String>,
+    final_report_ready: Option<bool>,
     artifact_manifest_sha256: String,
     source_fingerprint_hash: String,
     verdict: String,
@@ -117,6 +120,24 @@ pub fn run(args: BriefArgs) -> Result<(), ScvError> {
     println!("git-scv 필수 에이전트 브리핑");
     println!("run_dir={}", run_dir.display());
     println!("run_id={}", brief.run_id);
+    println!(
+        "analysis_stage={}",
+        brief
+            .analysis_stage
+            .as_deref()
+            .unwrap_or("static-preflight-only")
+    );
+    println!(
+        "analysis_stage_label={}",
+        brief
+            .analysis_stage_label
+            .as_deref()
+            .unwrap_or("Preflight complete - LLM unit analysis has not run")
+    );
+    println!(
+        "final_report_ready={}",
+        brief.final_report_ready.unwrap_or(false)
+    );
     println!(
         "artifact_manifest_sha256={}",
         brief.artifact_manifest_sha256

@@ -5,9 +5,9 @@
 
 use crate::errors::ScvError;
 use crate::model::{
-    ArchitectureEntrypoint, ArchitectureMapArtifact, ArchitectureSector, ArchitectureSummary,
-    ConnectionGraphArtifact, CoverageArtifact, DependencyArtifact, GateArtifact,
-    GateDecisionArtifact, InventoryArtifact, ReachabilityScenariosArtifact, Relation,
+    AnalysisStage, ArchitectureEntrypoint, ArchitectureMapArtifact, ArchitectureSector,
+    ArchitectureSummary, ConnectionGraphArtifact, CoverageArtifact, DependencyArtifact,
+    GateArtifact, GateDecisionArtifact, InventoryArtifact, ReachabilityScenariosArtifact, Relation,
     RelationMapArtifact, RepoShape, SectorsArtifact, SensitiveArtifact, SourceArtifact,
     SourceLandmark, SourceLandmarkGuard, SourceLandmarksArtifact, SupportedSurfacesArtifact,
     VisualizationGraphLimits, VisualizationIndexArtifact, VisualizationPrivacy, VisualizationView,
@@ -107,6 +107,7 @@ pub fn architecture_map(
     ArchitectureMapArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        analysis_stage: AnalysisStage::StaticPreflightOnly,
         repo_shape: RepoShape {
             detected_shapes: shapes.clone(),
             confidence: confidence.into(),
@@ -243,6 +244,7 @@ pub fn visualization_index(
     VisualizationIndexArtifact {
         schema_version: SCHEMA_VERSION.into(),
         run_id: run_id.into(),
+        analysis_stage: AnalysisStage::StaticPreflightOnly,
         default_visualization: "architecture.html".into(),
         views: vec![
             view(
@@ -291,6 +293,8 @@ pub fn visualization_index(
 pub fn render_architecture_html(data: &crate::model::RunData) -> Result<String, ScvError> {
     let view_data = json!({
         "run_id": data.run_id,
+        "analysis_stage": data.analysis_state.analysis_stage,
+        "analysis_stage_label": data.analysis_state.analysis_stage.user_badge(),
         "source_fingerprint_hash": source_fingerprint_hash(&data.source),
         "verdict": data.review.verdict,
         "safe_claim_made": false,
@@ -305,6 +309,8 @@ pub fn render_architecture_html(data: &crate::model::RunData) -> Result<String, 
         "review": data.review,
         "synthesis": data.synthesis,
         "followup_plan": data.followup_plan,
+        "analysis_state": data.analysis_state,
+        "analysis_map": data.analysis_map,
     });
     let data_json = safe_embedded_json(&view_data)?;
     Ok(format!(
@@ -374,6 +380,16 @@ pub fn render_architecture_html(data: &crate::model::RunData) -> Result<String, 
       padding: 10px;
       background: #fbfcfe;
     }}
+    .stage-banner {{
+      margin-top: 12px;
+      border: 1px solid #f0c36a;
+      border-left: 5px solid #a15c07;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff8e8;
+      color: #573a05;
+      font-weight: 700;
+    }}
     .label {{ color: var(--muted); font-size: 12px; }}
     .value {{ font-weight: 700; overflow-wrap: anywhere; }}
     .tabs {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }}
@@ -437,6 +453,7 @@ pub fn render_architecture_html(data: &crate::model::RunData) -> Result<String, 
 <body>
   <header>
     <h1>Git-SCV Architecture & Safety Synthesis</h1>
+    <div class="stage-banner" id="stageBanner"></div>
     <div class="summary" id="summary"></div>
     <div class="tabs" id="tabs"></div>
   </header>
@@ -487,7 +504,9 @@ pub fn render_architecture_html(data: &crate::model::RunData) -> Result<String, 
       const arch = data.architecture_map;
       const synth = data.synthesis;
       const blocked = (data.review.required_actions || []).filter(a => a.required).map(a => a.id);
+      document.getElementById('stageBanner').textContent = `${{data.analysis_stage}}: ${{data.analysis_stage_label}}`;
       document.getElementById('summary').innerHTML = [
+        ['Analysis stage', data.analysis_stage, 'warn'],
         ['Verdict', data.verdict, 'blocked'],
         ['Safe claim made', String(data.safe_claim_made), data.safe_claim_made ? 'blocked' : 'ok'],
         ['Repo shape', (arch.repo_shape.detected_shapes || []).join(', ') || 'unknown', ''],
@@ -553,6 +572,7 @@ pub fn render_architecture_html(data: &crate::model::RunData) -> Result<String, 
       const synth = data.synthesis;
       const diag = synth.aggregate_safety_diagnosis;
       return `<section class="view active"><h2>Synthesis View</h2><div class="grid">
+        ${{card('Stage warning', [data.analysis_stage_label, 'This view is static preflight unless unit_analysis.jsonl and analysis_map.json are complete.'], 'edge')}}
         ${{card('Architecture synthesis', [`shapes: ${{(synth.architecture_synthesis.detected_shapes || []).join(', ')}}`, `primary sectors: ${{(synth.architecture_synthesis.primary_sectors || []).join(', ')}}`, `visualization: ${{synth.architecture_synthesis.recommended_visualization}}`])}}
         ${{card('Aggregate safety diagnosis', [`no_blocker_observed_within_scope: ${{diag.no_blocker_observed_within_scope}}`, `blocked surfaces: ${{(diag.blocked_execution_surfaces || []).join(', ') || 'none'}}`, `insufficient coverage: ${{(diag.insufficient_coverage_reasons || []).join(', ') || 'none'}}`])}}
         ${{card('What cannot be concluded', diag.what_cannot_be_concluded || [])}}

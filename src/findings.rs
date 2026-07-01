@@ -6,7 +6,7 @@
 //! 만들고 발견사항을 만든다.
 
 use crate::errors::ScvError;
-use crate::evidence::EvidenceStore;
+use crate::evidence::{EvidenceInput, EvidenceStore};
 use crate::model::{
     Category, Detection, EvidenceKind, Finding, LineRange, Priority, RuleId,
     LOW_CONFIDENCE_SENTENCE,
@@ -130,15 +130,15 @@ fn add_evidence(store: &mut EvidenceStore, detection: &Detection) -> String {
         end: line,
     });
     let summary = evidence_summary(detection);
-    store.add(
-        &detection.path,
+    store.add(EvidenceInput {
+        path: &detection.path,
         kind,
         lines,
-        &summary,
-        json_pointer(detection),
-        signal_labels(detection),
-        detection.excerpt.as_deref(),
-    )
+        summary: &summary,
+        json_pointer: json_pointer(detection),
+        signal_labels: signal_labels(detection),
+        excerpt: detection.excerpt.as_deref(),
+    })
 }
 
 fn json_pointer(detection: &Detection) -> Option<String> {
