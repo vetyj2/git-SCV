@@ -1,6 +1,6 @@
-# Git-SCV v0.3.3 RC Acceptance
+# Git-SCV v0.3.4 RC Acceptance
 
-The v0.3.3 release candidate is accepted only when the tagged GitHub install
+The v0.3.4 release candidate is accepted only when the tagged GitHub install
 flow, no-exec/no-leak contracts, source-bound analysis job workflow, and final
 report blocking behavior all match the CLI and generated artifacts.
 

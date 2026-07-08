@@ -86,11 +86,35 @@ fn rc_review_job_export_complete_continue_flow_is_source_bound() {
     );
 
     let result_file = common::temp_dir("rc-review-job-flow-result").join("unit.jsonl");
-    fs::write(
-        &result_file,
-        r#"{"unit_id":"U0001","allowed_paths":["src.js"],"forbidden_paths":[],"claims":[],"connections_observed":[],"unresolved_questions":[]}"#,
-    )
-    .unwrap();
+    let unit = serde_json::json!({
+        "unit_id": "U0001",
+        "allowed_paths": ["src.js"],
+        "forbidden_paths": [],
+        "claims": [],
+        "connections_observed": [],
+        "unresolved_questions": [],
+        "qualitative_digest": {
+            "summary": "src.js exports a simple value.",
+            "important_points": ["src.js was reviewed as the current slice"],
+            "scoped_uncertainty": ["Only the exported src.js slice was reviewed."]
+        },
+        "map_delta": {
+            "repo_purpose_candidates": ["Small JavaScript module"],
+            "major_modules": ["src.js"],
+            "execution_flows": ["No install or run flow was observed in this slice."],
+            "owner_questions": ["Which command is the supported entrypoint?"],
+            "pre_use_checklist": ["Verify source before execution decisions."]
+        },
+        "relation_candidates": [],
+        "followup_candidates": [],
+        "abstentions": [
+            {
+                "reason": "No execution semantics were proven from this slice.",
+                "scope": "execution-safety"
+            }
+        ]
+    });
+    fs::write(&result_file, serde_json::to_string(&unit).unwrap()).unwrap();
     let complete = Command::new(common::bin())
         .args(["analysis", "job", "complete"])
         .arg(&out)
@@ -245,7 +269,27 @@ fn rc_manual_export_import_watch_and_final_report_flow() {
             "forbidden_paths": [],
             "claims": [],
             "connections_observed": [],
-            "unresolved_questions": []
+            "unresolved_questions": [],
+            "qualitative_digest": {
+                "summary": format!("{path} was reviewed as a model-input slice."),
+                "important_points": [format!("{path} contributes to the repository reading map.")],
+                "scoped_uncertainty": ["Only exported slice content was reviewed."]
+            },
+            "map_delta": {
+                "repo_purpose_candidates": ["Slice-level repository review"],
+                "major_modules": [path],
+                "execution_flows": ["No execution flow was proven from this slice."],
+                "owner_questions": ["Which command is the supported entrypoint?"],
+                "pre_use_checklist": ["Verify source before execution decisions."]
+            },
+            "relation_candidates": [],
+            "followup_candidates": [],
+            "abstentions": [
+                {
+                    "reason": "Git-SCV does not prove install or execution safety.",
+                    "scope": "install-safety"
+                }
+            ]
         });
         unit_lines.push_str(&serde_json::to_string(&unit).unwrap());
         unit_lines.push('\n');
@@ -444,7 +488,7 @@ fn rc_scan_fake_worker_runs_one_touch_to_final_report() {
         "#!/bin/sh\n\
 if [ \"$1\" = \"--version\" ]; then echo git-scv-fake-worker 1; exit 0; fi\n\
 cat <<'JSON'\n\
-{\"unit_id\":\"UFAKE\",\"allowed_paths\":[\"src.js\"],\"forbidden_paths\":[],\"claims\":[],\"connections_observed\":[],\"unresolved_questions\":[]}\n\
+{\"unit_id\":\"UFAKE\",\"allowed_paths\":[\"src.js\"],\"forbidden_paths\":[],\"claims\":[],\"connections_observed\":[],\"unresolved_questions\":[],\"qualitative_digest\":{\"summary\":\"Slice shows a small JavaScript module exporting a value.\",\"important_points\":[\"src.js exports a value\"],\"scoped_uncertainty\":[\"Only the exported src.js slice was reviewed.\"]},\"map_delta\":{\"repo_purpose_candidates\":[\"Small JavaScript module\"],\"major_modules\":[\"src.js\"],\"execution_flows\":[\"No install or run flow was observed in this slice.\"],\"owner_questions\":[\"Which command is the supported entrypoint?\"],\"pre_use_checklist\":[\"Verify source before execution decisions.\"]},\"relation_candidates\":[],\"followup_candidates\":[],\"abstentions\":[{\"reason\":\"No execution safety was proven from this slice.\",\"scope\":\"execution-safety\"}]}\n\
 JSON\n",
     )
     .unwrap();
@@ -512,7 +556,7 @@ if [ \"$1\" = \"--version\" ]; then echo git-scv-fake-worker 1; exit 0; fi\n\
 prompt=$(cat)\n\
 case \"$prompt\" in\n\
   *\"previous answer did not pass\"*) cat <<'JSON'\n\
-{\"unit_id\":\"UFAKE\",\"allowed_paths\":[\"src.js\"],\"forbidden_paths\":[],\"claims\":[],\"connections_observed\":[],\"unresolved_questions\":[],\"qualitative_digest\":{\"summary\":\"Slice shows a small JavaScript module exporting a value.\",\"important_points\":[\"src.js exports a value\"],\"scoped_uncertainty\":[\"Only the exported src.js slice was reviewed.\"]},\"map_delta\":{\"repo_purpose_candidates\":[\"Small JavaScript module\"],\"major_modules\":[\"src.js\"],\"execution_flows\":[\"No install or run flow was observed in this slice.\"],\"owner_questions\":[\"Which command is the supported entrypoint?\"],\"pre_use_checklist\":[\"Review package scripts before install.\"]},\"relation_candidates\":[{\"from\":\"file:src.js\",\"to\":\"unknown:entrypoint\",\"kind\":\"unknown\",\"confidence\":\"low\"}],\"followup_suggestions\":[\"Check package manifest for the runtime entrypoint.\"]}\n\
+{\"unit_id\":\"UFAKE\",\"allowed_paths\":[\"src.js\"],\"forbidden_paths\":[],\"claims\":[],\"connections_observed\":[],\"unresolved_questions\":[],\"qualitative_digest\":{\"summary\":\"Slice shows a small JavaScript module exporting a value.\",\"important_points\":[\"src.js exports a value\"],\"scoped_uncertainty\":[\"Only the exported src.js slice was reviewed.\"]},\"map_delta\":{\"repo_purpose_candidates\":[\"Small JavaScript module\"],\"major_modules\":[\"src.js\"],\"execution_flows\":[\"No install or run flow was observed in this slice.\"],\"owner_questions\":[\"Which command is the supported entrypoint?\"],\"pre_use_checklist\":[\"Review package scripts before install.\"]},\"relation_candidates\":[{\"from\":\"file:src.js\",\"to\":\"unknown:entrypoint\",\"kind\":\"unknown\",\"confidence\":\"low\"}],\"followup_candidates\":[{\"summary\":\"Check package manifest for the runtime entrypoint.\"}],\"abstentions\":[]}\n\
 JSON\n\
     ;;\n\
   *) echo '{\"unit_id\":\"broken\"}' ;;\n\
@@ -572,6 +616,9 @@ esac\n",
         .join("analysis/worker-results/J00001.repair1.jsonl")
         .is_file());
     assert!(out.join("analysis_followup_jobs.jsonl").is_file());
+    assert!(out
+        .join("analysis/worker-results/FU0001.repair1.jsonl")
+        .is_file());
 
     let map: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(out.join("analysis_map.json")).unwrap()).unwrap();
@@ -585,13 +632,29 @@ esac\n",
             .any(|item| item.as_str().unwrap().contains("small JavaScript module")),
         "{map}"
     );
-    let report = fs::read_to_string(out.join("final_user_report.md")).unwrap();
-    assert!(report.contains("Slice-Level Understanding"), "{report}");
-    assert!(report.contains("Small JavaScript module"), "{report}");
-    assert!(report.contains("Relation and Follow-Up Notes"), "{report}");
+    let followups = fs::read_to_string(out.join("analysis_followup_jobs.jsonl")).unwrap();
     assert!(
-        report.contains("Only the exported src.js slice was reviewed."),
-        "{report}"
+        followups.contains("\"followup_job_id\":\"FU0001\""),
+        "{followups}"
+    );
+    assert!(
+        followups.contains("\"status\":\"completed\""),
+        "{followups}"
+    );
+    assert!(
+        followups.contains("\"followup_job_id\":\"FU0002\""),
+        "{followups}"
+    );
+    assert!(followups.contains("\"status\":\"blocked\""), "{followups}");
+    let jobs = fs::read_to_string(out.join("analysis_jobs.jsonl")).unwrap();
+    assert!(jobs.contains("\"job_id\":\"FU0001\""), "{jobs}");
+    assert!(
+        !jobs.contains("\"job_id\":\"FU0003\""),
+        "follow-up jobs must not recursively spawn unbounded follow-up work: {jobs}"
+    );
+    assert!(
+        !out.join("final_user_report.md").is_file(),
+        "final report must remain blocked while follow-up work is unresolved"
     );
 }
 
@@ -670,6 +733,23 @@ fn rc_worker_doctor_and_clean_are_safe_auxiliary_commands() {
         .output()
         .unwrap();
     assert_eq!(review.status.code(), Some(0));
+    let cleanup_manifest = fs::read_to_string(out.join("cleanup_manifest.json")).unwrap();
+    let cleanup_manifest_json: serde_json::Value = serde_json::from_str(&cleanup_manifest).unwrap();
+    assert_eq!(
+        cleanup_manifest_json["artifact_kind"], "cleanup_manifest",
+        "{cleanup_manifest_json}"
+    );
+    assert_eq!(cleanup_manifest_json["absolute_paths_stored"], false);
+    assert_eq!(cleanup_manifest_json["auth_storage_touched"], false);
+    assert!(cleanup_manifest_json["never_touch"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item == "oauth-token-storage"));
+    assert!(
+        !cleanup_manifest.contains(repo.to_string_lossy().as_ref()),
+        "cleanup manifest must not store raw local source path: {cleanup_manifest}"
+    );
     let temp_export = out.join("analysis").join("content-export");
     fs::create_dir_all(&temp_export).unwrap();
     fs::write(temp_export.join("J0001.json"), "{}\n").unwrap();
@@ -682,6 +762,17 @@ fn rc_worker_doctor_and_clean_are_safe_auxiliary_commands() {
     assert_eq!(dry_run.status.code(), Some(0));
     let dry_stdout = String::from_utf8_lossy(&dry_run.stdout);
     assert!(dry_stdout.contains("clean_mode=dry-run"));
+    assert!(dry_stdout.contains("cleanup_manifest=cleanup_manifest.json"));
+    assert!(dry_stdout.contains("candidate_absolute_path_stored=false"));
+    assert!(temp_export.is_dir());
+
+    let wrong_ack = Command::new(common::bin())
+        .arg("clean")
+        .arg(&out)
+        .args(["--apply", "--ack", "wrong"])
+        .output()
+        .unwrap();
+    assert_ne!(wrong_ack.status.code(), Some(0));
     assert!(temp_export.is_dir());
 
     let applied = Command::new(common::bin())

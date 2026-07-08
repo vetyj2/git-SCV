@@ -20,9 +20,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Install Git-SCV from GitHub:
 
 ```sh
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.4 --locked
 cargo install --git https://github.com/vetyj2/git-SCV --rev <commit-sha> --locked
-cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.3 --locked --force
+cargo install --git https://github.com/vetyj2/git-SCV --tag v0.3.4 --locked --force
 git-scv --version
 ```
 
@@ -346,7 +346,7 @@ configuration.
 
 ## Status
 
-v0.3.3 uses the schema-breaking artifact-contract-v2 release line. v0.2 artifacts are
+v0.3.4 uses the schema-breaking artifact-contract-v2 release line. v0.2 artifacts are
 not migrated; re-run inspection. Git-SCV does not claim repositories are safe,
 clean, trusted, secure, safe-to-install, or safe-to-run.
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.4 - 2026-07-04
+
+- Stabilized GitHub pinned snapshot acquisition for the default real-use path:
+  pinned GitHub archives now prefer codeload zip URLs, tar fallback skips
+  safe archive metadata entries, and unsafe symlink/hardlink/device entries
+  remain rejected.
+- Added `web-selected-preflight` for allowlisted public GitHub body preflight
+  with explicit `code_body_analysis:limited`, `semantic_analysis_complete:false`,
+  redacted excerpts, and no worker invocation.
+- Upgraded the worker output contract to v2.1 with required qualitative
+  digest, map delta, relation/follow-up candidates, scoped abstentions, and
+  low-value boilerplate rejection.
+- Added real-worker budget gating: Codex/Claude default to a sample run before
+  continuing, record `worker_budget_estimate.json`, and require exact
+  `continue-worker-budget` approval for larger runs.
+- Promoted dynamic follow-up jobs back into the worker queue, capped automatic
+  follow-up depth, and blocked final reports while unresolved follow-up work
+  remains.
+- Expanded `final_user_report.md/html` into a 15-section user-facing report and
+  refreshed `architecture.html` after runtime changes so it shows worker
+  progress, budget gate, follow-up queue, unresolved relations, and final report
+  state.
+- Added `cleanup_manifest.json`, manifest-based `git-scv clean --scope`, exact
+  cleanup acknowledgements, and tests that cleanup never stores raw local source
+  paths or touches auth/token storage.
+- Reworked the TTY dashboard around a compact three-line `SCV[...]` frame with
+  stable waiting/blocked/failed/complete frames, progress counts, report/map
+  pointers, and cleanup guidance.
+
 ## 0.3.3 - 2026-07-02
 
 - Added arrow-key quick-start selection for the short `git-scv

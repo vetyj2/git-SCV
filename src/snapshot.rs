@@ -119,9 +119,15 @@ fn finish_downloaded_snapshot_to_run(
 ) -> Result<(), ScvError> {
     let archive_kind = archive_kind(archive_url)
         .ok_or_else(|| usage_error("오류: snapshot 압축 형식을 확인할 수 없다.".into()))?;
-    extract_archive_bytes(bytes, archive_kind, source_dir)?;
-    let snapshot =
-        build_snapshot_info(sha256, archive_url, archive_kind, source_dir, verification)?;
+    let archive_stats = extract_archive_bytes(bytes, archive_kind, source_dir)?;
+    let snapshot = build_snapshot_info(
+        sha256,
+        archive_url,
+        archive_kind,
+        archive_stats,
+        source_dir,
+        verification,
+    )?;
     crate::inspect::run_with_snapshot(
         crate::cli::InspectArgs {
             repo_path: source_dir.to_path_buf(),
@@ -170,14 +176,34 @@ fn extract_archive_bytes(
     bytes: &[u8],
     archive_kind: ArchiveKind,
     out: &Path,
-) -> Result<(), ScvError> {
+) -> Result<ArchiveExtractionStats, ScvError> {
     match archive_kind {
         ArchiveKind::Zip => extract_zip(bytes, out),
         ArchiveKind::TarGz => extract_tar_gz(bytes, out),
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Debug)]
+struct ArchiveExtractionStats {
+    metadata_entries_skipped: u64,
+    metadata_skip_reasons: Vec<String>,
+    unsafe_entries_rejected: u64,
+}
+
+impl ArchiveExtractionStats {
+    fn record_metadata_skip(&mut self, reason: &'static str) {
+        self.metadata_entries_skipped += 1;
+        if !self
+            .metadata_skip_reasons
+            .iter()
+            .any(|existing| existing == reason)
+        {
+            self.metadata_skip_reasons.push(reason.to_string());
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ArchiveKind {
     Zip,
     TarGz,
@@ -194,7 +220,7 @@ impl ArchiveKind {
 
 fn archive_kind(value: &str) -> Option<ArchiveKind> {
     let path = strip_url_query_fragment(value).to_ascii_lowercase();
-    if path.ends_with(".zip") {
+    if path.ends_with(".zip") || path.contains("/zip/") || path.contains("/zipball/") {
         Some(ArchiveKind::Zip)
     } else if path.ends_with(".tar.gz") || path.ends_with(".tgz") || path.contains("/tar.gz/") {
         Some(ArchiveKind::TarGz)
@@ -207,6 +233,7 @@ fn build_snapshot_info(
     sha256: &str,
     archive_url: &str,
     archive_kind: ArchiveKind,
+    archive_stats: ArchiveExtractionStats,
     source_dir: &Path,
     verification: SnapshotVerification,
 ) -> Result<SnapshotInfo, ScvError> {
@@ -225,6 +252,9 @@ fn build_snapshot_info(
         verification_level: verification.verification_level.into(),
         pinned_commit: verification.pinned_commit,
         archive_format: archive_kind.label().into(),
+        archive_metadata_entries_skipped: archive_stats.metadata_entries_skipped,
+        archive_metadata_skip_reasons: archive_stats.metadata_skip_reasons,
+        unsafe_archive_entries_rejected: archive_stats.unsafe_entries_rejected,
         extracted_path: extracted_path.display().to_string(),
         archive_limits: ArchiveLimits {
             download_limit_bytes: SNAPSHOT_DOWNLOAD_LIMIT_BYTES,
@@ -243,7 +273,7 @@ fn snapshot_metadata_url(value: &str) -> String {
     redact_url_for_artifact(value).into_string()
 }
 
-fn extract_zip(bytes: &[u8], out: &Path) -> Result<(), ScvError> {
+fn extract_zip(bytes: &[u8], out: &Path) -> Result<ArchiveExtractionStats, ScvError> {
     validate_zip(bytes)?;
     create_output_root(out)?;
     let mut archive = ZipArchive::new(Cursor::new(bytes))
@@ -260,7 +290,7 @@ fn extract_zip(bytes: &[u8], out: &Path) -> Result<(), ScvError> {
             write_file_inside(out, &target, &mut file)?;
         }
     }
-    Ok(())
+    Ok(ArchiveExtractionStats::default())
 }
 
 fn validate_zip(bytes: &[u8]) -> Result<(), ScvError> {
@@ -293,8 +323,8 @@ fn zip_entry_path<R: io::Read>(file: &zip::read::ZipFile<'_, R>) -> Result<PathB
         .ok_or_else(|| usage_error("오류: snapshot 압축 항목 경로가 안전하지 않다.".into()))
 }
 
-fn extract_tar_gz(bytes: &[u8], out: &Path) -> Result<(), ScvError> {
-    validate_tar_gz(bytes)?;
+fn extract_tar_gz(bytes: &[u8], out: &Path) -> Result<ArchiveExtractionStats, ScvError> {
+    let stats = validate_tar_gz(bytes)?;
     create_output_root(out)?;
     let gz = GzDecoder::new(Cursor::new(bytes));
     let mut archive = tar::Archive::new(gz);
@@ -304,18 +334,22 @@ fn extract_tar_gz(bytes: &[u8], out: &Path) -> Result<(), ScvError> {
     for entry in entries {
         let mut entry =
             entry.map_err(|_err| usage_error("오류: snapshot tar 항목을 읽을 수 없다.".into()))?;
+        let decision = classify_tar_entry(entry.header().entry_type())?;
+        if matches!(decision, TarEntryDecision::SkipMetadata(_)) {
+            continue;
+        }
         let relative = tar_entry_path(&entry)?;
         let target = out.join(&relative);
-        if entry.header().entry_type().is_dir() {
+        if matches!(decision, TarEntryDecision::Directory) {
             create_dir_inside(out, &target)?;
         } else {
             write_file_inside(out, &target, &mut entry)?;
         }
     }
-    Ok(())
+    Ok(stats)
 }
 
-fn validate_tar_gz(bytes: &[u8]) -> Result<(), ScvError> {
+fn validate_tar_gz(bytes: &[u8]) -> Result<ArchiveExtractionStats, ScvError> {
     let gz = GzDecoder::new(Cursor::new(bytes));
     let mut archive = tar::Archive::new(gz);
     let entries = archive
@@ -323,6 +357,7 @@ fn validate_tar_gz(bytes: &[u8]) -> Result<(), ScvError> {
         .map_err(|_err| usage_error("오류: snapshot tar 압축을 읽을 수 없다.".into()))?;
     let mut count = 0_u64;
     let mut total_decompressed = 0_u64;
+    let mut stats = ArchiveExtractionStats::default();
     for entry in entries {
         let entry =
             entry.map_err(|_err| usage_error("오류: snapshot tar 항목을 읽을 수 없다.".into()))?;
@@ -334,10 +369,15 @@ fn validate_tar_gz(bytes: &[u8]) -> Result<(), ScvError> {
         if total_decompressed > SNAPSHOT_MAX_DECOMPRESSED_BYTES {
             return usage("오류: snapshot 압축 해제 크기 한도를 초과했다.".into());
         }
+        let decision = classify_tar_entry(entry.header().entry_type())?;
+        if let TarEntryDecision::SkipMetadata(reason) = decision {
+            stats.record_metadata_skip(reason);
+            continue;
+        }
         let path = tar_entry_path(&entry)?;
         validate_archive_path_limits(&path)?;
     }
-    Ok(())
+    Ok(stats)
 }
 
 fn validate_archive_path_limits(path: &Path) -> Result<(), ScvError> {
@@ -351,14 +391,29 @@ fn validate_archive_path_limits(path: &Path) -> Result<(), ScvError> {
 }
 
 fn tar_entry_path<R: io::Read>(entry: &tar::Entry<'_, R>) -> Result<PathBuf, ScvError> {
-    let kind = entry.header().entry_type();
-    if !matches!(kind, EntryType::Regular | EntryType::Directory) {
-        return usage("오류: snapshot 압축 항목 형식이 안전하지 않다.".into());
-    }
     let path = entry
         .path()
         .map_err(|_err| usage_error("오류: snapshot 압축 항목 경로를 읽을 수 없다.".into()))?;
     clean_relative_path(path.as_ref())
+}
+
+#[derive(Clone, Copy)]
+enum TarEntryDecision {
+    RegularFile,
+    Directory,
+    SkipMetadata(&'static str),
+}
+
+fn classify_tar_entry(kind: EntryType) -> Result<TarEntryDecision, ScvError> {
+    match kind {
+        EntryType::Regular => Ok(TarEntryDecision::RegularFile),
+        EntryType::Directory => Ok(TarEntryDecision::Directory),
+        EntryType::XHeader => Ok(TarEntryDecision::SkipMetadata("pax-extended-header")),
+        EntryType::XGlobalHeader => Ok(TarEntryDecision::SkipMetadata("pax-global-header")),
+        EntryType::GNULongName => Ok(TarEntryDecision::SkipMetadata("gnu-long-name")),
+        EntryType::GNULongLink => Ok(TarEntryDecision::SkipMetadata("gnu-long-link")),
+        _ => usage("오류: snapshot 압축 항목 형식이 안전하지 않다.".into()),
+    }
 }
 
 fn clean_relative_path(path: &Path) -> Result<PathBuf, ScvError> {
@@ -435,8 +490,8 @@ fn hex_lower(bytes: impl AsRef<[u8]>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        finish_downloaded_pinned_snapshot, finish_downloaded_snapshot, sha256_hex, sha256_matches,
-        SNAPSHOT_DOWNLOAD_LIMIT_BYTES, SNAPSHOT_MAX_DEPTH,
+        archive_kind, finish_downloaded_pinned_snapshot, finish_downloaded_snapshot, sha256_hex,
+        sha256_matches, ArchiveKind, SNAPSHOT_DOWNLOAD_LIMIT_BYTES, SNAPSHOT_MAX_DEPTH,
     };
     use flate2::write::GzEncoder;
     use flate2::Compression;
@@ -462,6 +517,35 @@ mod tests {
     fn sha256_match_rejects_wrong_or_malformed_digest() {
         assert!(!sha256_matches(b"abc", &"0".repeat(64)));
         assert!(!sha256_matches(b"abc", "abc"));
+    }
+
+    #[test]
+    fn archive_kind_accepts_github_codeload_zip_path() {
+        assert_eq!(
+            archive_kind("https://codeload.github.com/example/project/zip/0123456789012345678901234567890123456789"),
+            Some(ArchiveKind::Zip)
+        );
+        assert_eq!(
+            archive_kind("https://github.com/example/project/archive/0123456789012345678901234567890123456789.zip"),
+            Some(ArchiveKind::Zip)
+        );
+    }
+
+    #[test]
+    fn tar_entry_classifier_skips_metadata_and_rejects_unsafe_payloads() {
+        assert!(matches!(
+            super::classify_tar_entry(tar::EntryType::XGlobalHeader),
+            Ok(super::TarEntryDecision::SkipMetadata("pax-global-header"))
+        ));
+        assert!(matches!(
+            super::classify_tar_entry(tar::EntryType::XHeader),
+            Ok(super::TarEntryDecision::SkipMetadata("pax-extended-header"))
+        ));
+        assert!(super::classify_tar_entry(tar::EntryType::Link).is_err());
+        assert!(super::classify_tar_entry(tar::EntryType::Symlink).is_err());
+        assert!(super::classify_tar_entry(tar::EntryType::Char).is_err());
+        assert!(super::classify_tar_entry(tar::EntryType::Block).is_err());
+        assert!(super::classify_tar_entry(tar::EntryType::Fifo).is_err());
     }
 
     #[test]
@@ -570,12 +654,12 @@ mod tests {
 
     #[test]
     fn pinned_snapshot_records_self_observed_not_external_verification() {
-        let bytes = tar_gz_bytes("project/src/lib.rs", b"pub fn ok() {}");
+        let bytes = zip_bytes("project/src/lib.rs", b"pub fn ok() {}");
         let checksum = sha256_hex(&bytes);
         let out = test_path("pinned-snapshot-output");
         let (run_dir, source_dir) = finish_downloaded_pinned_snapshot(
             &bytes,
-            "https://codeload.github.com/example/project/tar.gz/0123456789012345678901234567890123456789",
+            "https://codeload.github.com/example/project/zip/0123456789012345678901234567890123456789",
             "0123456789012345678901234567890123456789",
             &out,
             crate::model::RunCommand {
@@ -602,6 +686,68 @@ mod tests {
         assert_eq!(
             source["snapshot"]["pinned_commit"],
             "0123456789012345678901234567890123456789"
+        );
+        assert_eq!(source["snapshot"]["archive_format"], "zip");
+        assert_eq!(source["snapshot"]["archive_metadata_entries_skipped"], 0);
+        assert_eq!(source["snapshot"]["unsafe_archive_entries_rejected"], 0);
+    }
+
+    #[test]
+    fn tar_pax_metadata_entries_are_skipped_and_recorded() {
+        let bytes = tar_gz_with_metadata_entries();
+        let checksum = sha256_hex(&bytes);
+        let out = test_path("tar-pax-metadata-output");
+        finish_downloaded_snapshot(
+            &bytes,
+            &checksum,
+            "https://example.com/a.tgz",
+            &out,
+            test_snapshot_command("https://example.com/a.tgz", &out, &checksum),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(out.join("source/project/README.md")).unwrap(),
+            "hello"
+        );
+        let source: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("run/source.json")).unwrap())
+                .unwrap();
+        assert_eq!(source["snapshot"]["archive_format"], "tar.gz");
+        assert_eq!(source["snapshot"]["archive_metadata_entries_skipped"], 1);
+        let reasons = source["snapshot"]["archive_metadata_skip_reasons"]
+            .as_array()
+            .unwrap();
+        assert!(
+            reasons.iter().any(|item| item == "pax-global-header"),
+            "{reasons:?}"
+        );
+        assert_eq!(source["snapshot"]["unsafe_archive_entries_rejected"], 0);
+    }
+
+    #[test]
+    fn tar_symlink_entry_is_still_rejected_without_creating_output() {
+        let bytes =
+            tar_gz_single_entry_with_type("project/link-out", b"/tmp", tar::EntryType::Symlink);
+        let checksum = sha256_hex(&bytes);
+        let out = test_path("tar-symlink-output");
+        let err = finish_downloaded_snapshot(
+            &bytes,
+            &checksum,
+            "https://example.com/a.tgz",
+            &out,
+            test_snapshot_command("https://example.com/a.tgz", &out, &checksum),
+        )
+        .unwrap_err();
+        assert_eq!(err.exit_code(), 2);
+        assert!(
+            err.user_message()
+                .contains("snapshot 압축 항목 형식이 안전하지 않다"),
+            "{}",
+            err.user_message()
+        );
+        assert!(
+            !out.exists(),
+            "unsafe archive는 출력 디렉터리를 만들기 전에 거부해야 한다"
         );
     }
 
@@ -756,6 +902,63 @@ mod tests {
             builder.finish().unwrap();
         }
         encoder.finish().unwrap()
+    }
+
+    fn tar_gz_with_metadata_entries() -> Vec<u8> {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        {
+            let mut builder = tar::Builder::new(&mut encoder);
+            append_raw_tar_entry(
+                &mut builder,
+                "././@PaxHeader",
+                b"11 comment=x\n",
+                tar::EntryType::XGlobalHeader,
+            );
+            append_raw_tar_entry(
+                &mut builder,
+                "./PaxHeaders/project/README.md",
+                b"11 comment=y\n",
+                tar::EntryType::XHeader,
+            );
+            append_raw_tar_entry(
+                &mut builder,
+                "project/README.md",
+                b"hello",
+                tar::EntryType::Regular,
+            );
+            builder.finish().unwrap();
+        }
+        encoder.finish().unwrap()
+    }
+
+    fn tar_gz_single_entry_with_type(
+        path: &str,
+        content: &[u8],
+        entry_type: tar::EntryType,
+    ) -> Vec<u8> {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        {
+            let mut builder = tar::Builder::new(&mut encoder);
+            append_raw_tar_entry(&mut builder, path, content, entry_type);
+            builder.finish().unwrap();
+        }
+        encoder.finish().unwrap()
+    }
+
+    fn append_raw_tar_entry<W: Write>(
+        builder: &mut tar::Builder<W>,
+        path: &str,
+        content: &[u8],
+        entry_type: tar::EntryType,
+    ) {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_entry_type(entry_type);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, path, Cursor::new(content))
+            .unwrap();
     }
 
     fn malicious_tar_gz_bytes(path: &str, content: &[u8]) -> Vec<u8> {

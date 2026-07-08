@@ -1055,6 +1055,38 @@ fn t04_unit_analysis_and_synthesis_loop_commands_work() {
                 "reason": "execution body remains gate-bound",
                 "needed_approval": "execution-model-input-review"
             }
+        ],
+        "qualitative_digest": {
+            "summary": "package.json contains an execution-related manifest signal that remains gate-bound.",
+            "important_points": ["package.json is the reviewed manifest surface"],
+            "scoped_uncertainty": ["Execution body semantics were not validated by Git-SCV."]
+        },
+        "map_delta": {
+            "repo_purpose_candidates": ["Package manifest centered project"],
+            "major_modules": ["package.json"],
+            "execution_flows": ["Manifest execution signal is blocked by review gates."],
+            "owner_questions": ["Which install/build/test command is officially supported?"],
+            "pre_use_checklist": ["Verify source and resolve execution gates before running package-manager commands."]
+        },
+        "relation_candidates": [
+            {
+                "from": "file:package.json",
+                "to": "gate:execution-command-review",
+                "kind": "gates",
+                "confidence": "medium"
+            }
+        ],
+        "followup_candidates": [
+            {
+                "summary": "Review the gated execution surface after user approval.",
+                "path": "package.json"
+            }
+        ],
+        "abstentions": [
+            {
+                "reason": "Git-SCV validates structure and evidence boundaries, not semantic truth.",
+                "scope": "semantic-truth"
+            }
         ]
     });
     fs::write(&unit_file, serde_json::to_string_pretty(&unit).unwrap()).unwrap();

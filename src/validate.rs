@@ -1048,8 +1048,9 @@ const ARTIFACTS: [&str; 36] = [
     "architecture.html",
 ];
 
-const OPTIONAL_ARTIFACTS: [&str; 3] = [
+const OPTIONAL_ARTIFACTS: [&str; 4] = [
     "source_acquisition.json",
     "worker_backend.json",
     "analysis_followup_jobs.jsonl",
+    "cleanup_manifest.json",
 ];

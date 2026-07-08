@@ -214,6 +214,7 @@ fn artifact_kind_for_name(name: &str) -> &str {
         "llm_backend.json" => "llm_backend",
         "gpt_work_order.json" => "gpt_work_order",
         "work_order_binding.json" => "work_order_binding",
+        "cleanup_manifest.json" => "cleanup_manifest",
         "review.json" => "review",
         "security.json" => "security",
         "supported_surfaces.json" => "supported_surfaces",

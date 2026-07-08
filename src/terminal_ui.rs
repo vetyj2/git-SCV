@@ -8,6 +8,7 @@ use crate::cli::ProgressMode;
 use crate::errors::ScvError;
 use serde_json::json;
 use std::io::{self, IsTerminal, Read, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DashboardStatus {
@@ -348,6 +349,11 @@ fn render_tty_line(
     label: &str,
     finish_line: bool,
 ) -> Result<(), ScvError> {
+    if snapshot.status == DashboardStatus::Complete && label != "worker-loop" {
+        print!("\r\x1b[2K");
+        render_completion_banner(snapshot, label);
+        return Ok(());
+    }
     print!(
         "\rGit-SCV [{:>3}%] {} {} job={} path={} next={} ",
         snapshot.percent,
@@ -360,54 +366,14 @@ fn render_tty_line(
     io::stdout()
         .flush()
         .map_err(|err| ScvError::Inspect(format!("progress stdout flush failed: {err}")))?;
-    if snapshot.status == DashboardStatus::Complete && label != "worker-loop" {
-        println!();
-        render_completion_banner(snapshot, label);
-    } else if finish_line {
+    if finish_line {
         println!();
     }
     Ok(())
 }
 
 fn render_compact_block(snapshot: &DashboardSnapshot) {
-    println!("{}  {}", snapshot.title, snapshot.status.as_str());
-    println!(
-        "stage    {}  {:>3}%  {}",
-        snapshot.stage_summary,
-        snapshot.percent,
-        snapshot.progress_text()
-    );
-    println!(
-        "jobs     queued={} claimed={} failed={} blocked={}",
-        snapshot.queued, snapshot.claimed, snapshot.failed, snapshot.blocked
-    );
-    println!(
-        "state    source={} gates={} report={} map={}",
-        short_status(&snapshot.source_status),
-        short_status(&snapshot.gate_status),
-        snapshot
-            .report_path
-            .as_ref()
-            .map(|_| "final_user_report.md".to_string())
-            .unwrap_or_else(|| short_status(&snapshot.final_report_status)),
-        snapshot
-            .map_path
-            .as_ref()
-            .map(|path| artifact_name(path))
-            .unwrap_or_else(|| "not-ready".into())
-    );
-    if !snapshot.current_path.is_empty() {
-        println!("current  {}", snapshot.compact_path());
-    }
-    println!(
-        "next     {}",
-        truncate_middle(&snapshot.next_safe_command, 72)
-    );
-    println!("details  {}", snapshot.run_dir);
-    println!(
-        "no-exec  target_repo_commands_executed={}",
-        snapshot.target_repo_commands_executed
-    );
+    println!("{}", compact_frame(snapshot));
 }
 
 fn render_watch_plain(snapshot: &DashboardSnapshot) {
@@ -445,21 +411,94 @@ fn render_watch_plain(snapshot: &DashboardSnapshot) {
 }
 
 fn render_completion_banner(snapshot: &DashboardSnapshot, label: &str) {
-    println!("{}  review complete", snapshot.title);
-    println!("stage    {}", snapshot.stage_summary);
-    println!("progress {}", snapshot.progress_text());
-    if let Some(report) = &snapshot.report_path {
-        println!("report   {report}");
-    }
-    if let Some(map) = &snapshot.map_path {
-        println!("map      {map}");
-    }
-    println!(
-        "no-exec  target_repo_commands_executed={}",
-        snapshot.target_repo_commands_executed
-    );
-    println!("claim    safe_claim_made={}", snapshot.safe_claim_made);
-    println!("event    {label}");
+    let mut complete = snapshot.clone();
+    complete.status = DashboardStatus::Complete;
+    complete.stage_summary = format!("done {label}");
+    println!("{}", compact_frame(&complete));
+}
+
+fn compact_frame(snapshot: &DashboardSnapshot) -> String {
+    let report = snapshot
+        .report_path
+        .as_ref()
+        .map(|path| artifact_name(path))
+        .unwrap_or_else(|| short_status(&snapshot.final_report_status));
+    let map = snapshot
+        .map_path
+        .as_ref()
+        .map(|path| artifact_name(path))
+        .unwrap_or_else(|| "map-pending".into());
+    let action = if snapshot.status == DashboardStatus::Complete {
+        format!("report={report} map={map} clean=git-scv clean <run-dir>")
+    } else {
+        format!("next={}", truncate_middle(&snapshot.next_safe_command, 52))
+    };
+    [
+        format!(
+            "{} {:>3}% {} {}/{} job={} path={}",
+            scv_sprite(snapshot.status),
+            snapshot.percent,
+            short_stage(&snapshot.stage, &snapshot.stage_summary),
+            snapshot.completed,
+            snapshot.total,
+            truncate_middle(&snapshot.current_job, 12),
+            truncate_middle(&snapshot.current_path, 24)
+        ),
+        format!(
+            "q={} c={} f={} b={} src={} gate={} report={}",
+            snapshot.queued,
+            snapshot.claimed,
+            snapshot.failed,
+            snapshot.blocked,
+            short_status(&snapshot.source_status),
+            short_status(&snapshot.gate_status),
+            report
+        ),
+        action,
+    ]
+    .join("\n")
+}
+
+fn scv_sprite(status: DashboardStatus) -> String {
+    let face = match status {
+        DashboardStatus::Running => running_spinner(),
+        DashboardStatus::Waiting => ".",
+        DashboardStatus::Blocked => "!",
+        DashboardStatus::Failed => "x",
+        DashboardStatus::Complete => "*",
+    };
+    format!("SCV[{face}]")
+}
+
+fn running_spinner() -> &'static str {
+    const FRAMES: [&str; 4] = ["/", "-", "\\", "|"];
+    let tick = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as usize)
+        .unwrap_or(0);
+    FRAMES[tick % FRAMES.len()]
+}
+
+fn short_stage(stage: &str, summary: &str) -> String {
+    let label = match stage {
+        "web-metadata-preflight" => "web-meta",
+        "web-selected-preflight" => "web-lite",
+        "static-preflight-only" => "preflight",
+        "pending-unit-analysis" => "unit",
+        "llm-analysis-in-progress" => "unit",
+        "worker-budget-waiting-user" => "budget",
+        "analysis-partial" => "followup",
+        "analysis-map-complete" => "map",
+        "final-report-complete" => "done",
+        "blocked-stale-source" => "block",
+        "blocked-failed-unit-analysis" => "fail",
+        _ if stage.contains("snapshot") => "snapshot",
+        _ if stage.contains("followup") => "followup",
+        _ if stage.contains("synth") => "synth",
+        _ if stage.contains("report") => "report",
+        _ => summary,
+    };
+    truncate_middle(label, 16)
 }
 
 fn plain_progress_line(snapshot: &DashboardSnapshot, label: &str) -> String {
@@ -571,6 +610,52 @@ mod tests {
         assert!(line.contains("current_job=J00021"));
         assert!(line.contains("target_repo_commands_executed=false"));
         assert!(line.contains("safe_claim_made=false"));
+    }
+
+    #[test]
+    fn terminal_frame_is_three_lines_for_core_states() {
+        for status in [
+            DashboardStatus::Running,
+            DashboardStatus::Waiting,
+            DashboardStatus::Blocked,
+            DashboardStatus::Failed,
+            DashboardStatus::Complete,
+        ] {
+            let mut snapshot = sample_snapshot();
+            snapshot.status = status;
+            if status == DashboardStatus::Complete {
+                snapshot.report_path = Some("/tmp/run/final_user_report.md".into());
+                snapshot.map_path = Some("/tmp/run/architecture.html".into());
+            }
+            let frame = compact_frame(&snapshot);
+            assert_eq!(frame.lines().count(), 3, "{frame}");
+            assert!(frame.contains("SCV["), "{frame}");
+            assert!(!frame.contains("token="), "{frame}");
+        }
+    }
+
+    #[test]
+    fn terminal_complete_frame_shows_report_map_and_cleanup_pointer() {
+        let mut snapshot = sample_snapshot();
+        snapshot.status = DashboardStatus::Complete;
+        snapshot.report_path = Some("/tmp/run/final_user_report.md".into());
+        snapshot.map_path = Some("/tmp/run/architecture.html".into());
+        let frame = compact_frame(&snapshot);
+        assert!(frame.contains("report=final_user_report.md"), "{frame}");
+        assert!(frame.contains("map=architecture.html"), "{frame}");
+        assert!(frame.contains("clean=git-scv clean <run-dir>"), "{frame}");
+    }
+
+    #[test]
+    fn terminal_waiting_budget_frame_is_static() {
+        let mut snapshot = sample_snapshot();
+        snapshot.status = DashboardStatus::Waiting;
+        snapshot.stage = "worker-budget-waiting-user".into();
+        let first = compact_frame(&snapshot);
+        let second = compact_frame(&snapshot);
+        assert_eq!(first, second);
+        assert!(first.contains("SCV[.]"), "{first}");
+        assert!(first.contains("budget"), "{first}");
     }
 
     #[test]

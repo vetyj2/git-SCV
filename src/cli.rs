@@ -126,6 +126,7 @@ pub struct DoctorArgs {
 pub enum QuickFlow {
     LocalPreflight,
     WebMetadataPreflight,
+    WebSelectedPreflight,
     StrictSnapshotReminder,
     PinnedSnapshotAnalysis,
     LocalFullWorker,
@@ -172,6 +173,21 @@ pub struct ScanArgs {
     /// worker 오류가 나면 즉시 멈춘다. 기본값은 계속 안전 실패 상태로 남기는 것이다.
     #[arg(long)]
     pub stop_on_worker_error: bool,
+    /// real worker 호출 예산 게이트
+    #[arg(long, value_enum, default_value = "auto")]
+    pub budget_gate: BudgetGate,
+    /// 예산 승인 전 real worker sample job 수
+    #[arg(long, default_value_t = 3)]
+    pub sample_jobs: usize,
+    /// 예산 승인 후 이어서 처리할 job 수
+    #[arg(long)]
+    pub continue_jobs: Option<usize>,
+    /// 예산 승인 후 전체 job 대비 처리할 비율
+    #[arg(long)]
+    pub continue_percent: Option<u8>,
+    /// real worker 예산 승인 문구. continue-worker-budget 필요.
+    #[arg(long)]
+    pub approve_worker_budget: Option<String>,
     /// 기존 run dir가 있으면 이어서 진행한다.
     #[arg(long)]
     pub resume: bool,
@@ -185,10 +201,19 @@ pub struct ScanArgs {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 #[value(rename_all = "kebab-case")]
+pub enum BudgetGate {
+    Auto,
+    Always,
+    Off,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
 pub enum ScanMode {
     LocalFull,
     #[value(alias = "web-only")]
     WebMetadataPreflight,
+    WebSelectedPreflight,
     #[value(alias = "verified-snapshot")]
     StrictVerifiedSnapshot,
     PinnedSnapshot,
@@ -199,6 +224,7 @@ impl ScanMode {
         match self {
             ScanMode::LocalFull => "local-full",
             ScanMode::WebMetadataPreflight => "web-metadata-preflight",
+            ScanMode::WebSelectedPreflight => "web-selected-preflight",
             ScanMode::StrictVerifiedSnapshot => "strict-verified-snapshot",
             ScanMode::PinnedSnapshot => "pinned-snapshot",
         }
@@ -623,12 +649,22 @@ pub struct WorkerDoctorArgs {
 pub struct CleanArgs {
     /// inspect run directory 또는 case package directory
     pub run_dir: PathBuf,
+    /// 삭제 대상 범위. 기본은 analysis 임시 export/result만 포함한다.
+    #[arg(long, value_enum, default_value = "analysis-temp")]
+    pub scope: CleanScope,
     /// 실제 삭제 실행. 없으면 dry-run plan만 출력한다.
     #[arg(long)]
     pub apply: bool,
     /// 삭제 확인 문구. 실제 삭제 시 clean-git-scv-run 필요.
     #[arg(long)]
     pub ack: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum CleanScope {
+    AnalysisTemp,
+    SnapshotSource,
+    All,
 }
 
 #[derive(clap::Args)]

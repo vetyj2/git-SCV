@@ -209,6 +209,9 @@ pub struct SnapshotInfo {
     pub verification_level: String,
     pub pinned_commit: Option<String>,
     pub archive_format: String,
+    pub archive_metadata_entries_skipped: u64,
+    pub archive_metadata_skip_reasons: Vec<String>,
+    pub unsafe_archive_entries_rejected: u64,
     pub extracted_path: String,
     pub archive_limits: ArchiveLimits,
 }

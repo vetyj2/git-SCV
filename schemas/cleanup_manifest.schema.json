@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git-scv.local/schemas/cleanup_manifest.schema.json",
+  "title": "Git-SCV cleanup manifest",
+  "type": "object",
+  "required": [
+    "artifact_kind",
+    "schema_version",
+    "contract_version",
+    "created_by_git_scv",
+    "never_touch",
+    "source_repo_deleted",
+    "auth_storage_touched",
+    "absolute_paths_stored"
+  ],
+  "properties": {
+    "artifact_kind": { "const": "cleanup_manifest" },
+    "schema_version": { "type": "string" },
+    "contract_version": { "const": "artifact-contract-v2" },
+    "producer": { "type": "object" },
+    "min_reader_version": { "type": "string" },
+    "created_by_git_scv": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "delete_allowed", "absolute_path_stored"],
+        "properties": {
+          "path": { "type": "string" },
+          "kind": { "type": "string" },
+          "exists": { "type": "boolean" },
+          "delete_allowed": { "type": "boolean" },
+          "absolute_path_stored": { "type": "boolean" },
+          "inside_run_dir": { "type": "boolean" },
+          "source_repo": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "never_touch": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "source_repo_deleted": { "const": false },
+    "user_local_source_repo_delete_allowed": { "const": false },
+    "user_local_source_repo_detected": { "type": "boolean" },
+    "auth_storage_touched": { "const": false },
+    "auth_storage_stat_list_read_hash_delete_write_serialize": { "const": false },
+    "absolute_paths_stored": { "const": false }
+  },
+  "additionalProperties": true
+}

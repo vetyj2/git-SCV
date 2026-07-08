@@ -1,6 +1,6 @@
-# Git-SCV v0.3.3 RC Status
+# Git-SCV v0.3.4 RC Status
 
-This document records the current v0.3.3 release-candidate state against the
+This document records the current v0.3.4 release-candidate state against the
 2026-06-29 no-exec, no-leak, source-bound agent orchestration plan.
 
 ## Implemented
@@ -79,6 +79,26 @@ This document records the current v0.3.3 release-candidate state against the
 - Terminal progress output with stage, source status, gate status, job counts,
   current job/path, failed/blocked counts, final-report status, no-exec status,
   and next safe command.
+- GitHub pinned snapshot defaults to codeload zip archives, while tar fallback
+  skips safe archive metadata and continues to reject unsafe entries.
+- GitHub `web-selected-preflight` reads only allowlisted public body files,
+  records limited code-body analysis, redacts excerpts, and does not start a
+  worker or claim semantic completion.
+- Worker output contract v2.1 requires qualitative digest, map delta,
+  relation/follow-up candidates, and scoped abstentions while rejecting generic
+  low-value boilerplate.
+- Codex/Claude worker budget gate records a sample estimate and requires exact
+  `continue-worker-budget` approval before larger runs.
+- Dynamic follow-up jobs are promoted into the worker queue with automatic
+  follow-up depth capped; unresolved follow-up blocks final report completion.
+- `final_user_report.md/html` now uses a 15-section user report structure.
+- Runtime `architecture.html` refreshes after worker/follow-up/budget/final
+  state changes and shows worker progress, budget gate, follow-up queue, and
+  unresolved relation status.
+- `cleanup_manifest.json` records Git-SCV-owned cleanup candidates, never-touch
+  auth/token policy, and no raw absolute local source paths.
+- TTY dashboard uses a compact three-line `SCV[...]` frame with report/map and
+  cleanup pointers.
 
 ## Documented
 
@@ -133,6 +153,6 @@ This document records the current v0.3.3 release-candidate state against the
 The tree must not be released if any item in `docs/RC_BLOCKERS.md` is present.
 At minimum, a GitHub tag release requires `cargo fmt`, `cargo test`, `cargo
 clippy --all-targets`, schema JSON validation, script syntax validation, secret
-scan, version consistency, and a fresh `cargo install --git ... --tag v0.3.3
+scan, version consistency, and a fresh `cargo install --git ... --tag v0.3.4
 --locked` test after tagging. `cargo package --locked` is recommended for the
 GitHub tag release and required before any crates.io publish path.

@@ -1,4 +1,4 @@
-# Git-SCV v0.3.3 RC Blockers
+# Git-SCV v0.3.4 RC Blockers
 
 Do not publish the release if any of these are true.
 
@@ -83,7 +83,7 @@ Do not publish the release if any of these are true.
 - `case show` or `case status` leaks the absolute source path by default.
 - `cargo fmt`, `cargo test`, `cargo clippy --all-targets`, schema validation,
   script syntax checks, secret scan, version consistency check, or fresh
-  `cargo install --git ... --tag v0.3.3 --locked` test fail.
+  `cargo install --git ... --tag v0.3.4 --locked` test fail.
 - `cargo package --locked` fails for a crates.io release path.
 
 Non-blockers before stable:

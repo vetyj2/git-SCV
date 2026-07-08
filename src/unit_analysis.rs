@@ -218,6 +218,7 @@ fn validate_unit_value(unit: &Value, evidence_ids: &BTreeSet<String>) -> UnitVal
     let claims = required_array(unit, "claims", &mut errors);
     let connections = required_array(unit, "connections_observed", &mut errors);
     let unresolved_questions = required_array(unit, "unresolved_questions", &mut errors);
+    let quality = validate_quality_fields(unit, &claims, &connections, &mut errors);
 
     for path in allowed_paths.iter().chain(forbidden_paths.iter()) {
         validate_repo_relative_path(path, "unit-analysis-path", &mut errors);
@@ -262,6 +263,7 @@ fn validate_unit_value(unit: &Value, evidence_ids: &BTreeSet<String>) -> UnitVal
     }
 
     scan_raw_markers(unit, "unit-analysis", &mut errors);
+    validate_low_value_analysis(&quality, &mut errors);
 
     UnitValidation {
         unit_id,
@@ -269,6 +271,162 @@ fn validate_unit_value(unit: &Value, evidence_ids: &BTreeSet<String>) -> UnitVal
         unresolved_questions_count: unresolved_questions.len(),
         errors,
     }
+}
+
+#[derive(Default)]
+struct QualityValidation {
+    digest_summary: String,
+    digest_points_count: usize,
+    map_delta_items_count: usize,
+    relation_candidates_count: usize,
+    followup_candidates_count: usize,
+    abstentions_count: usize,
+    claims_count: usize,
+    connections_count: usize,
+}
+
+fn validate_quality_fields(
+    unit: &Value,
+    claims: &[&Value],
+    connections: &[&Value],
+    errors: &mut Vec<String>,
+) -> QualityValidation {
+    let mut quality = QualityValidation {
+        claims_count: claims.len(),
+        connections_count: connections.len(),
+        ..QualityValidation::default()
+    };
+
+    let Some(digest) = unit.get("qualitative_digest").and_then(Value::as_object) else {
+        errors.push(
+            "qualitative_digest-missing: required object field is missing for worker contract v2.1"
+                .into(),
+        );
+        return quality;
+    };
+    let digest_value = Value::Object(digest.clone());
+    quality.digest_summary =
+        required_nested_string(&digest_value, "summary", "qualitative_digest", errors);
+    quality.digest_points_count = required_string_array_at(
+        &digest_value,
+        "important_points",
+        "qualitative_digest",
+        errors,
+    )
+    .len();
+    let uncertainty = required_string_array_at(
+        &digest_value,
+        "scoped_uncertainty",
+        "qualitative_digest",
+        errors,
+    );
+    for (index, item) in uncertainty.iter().enumerate() {
+        if is_generic_uncertainty(item) {
+            errors.push(format!(
+                "qualitative_digest.scoped_uncertainty[{index}]-generic: uncertainty must be tied to slice boundary, missing evidence, redaction, parser gap, or unresolved relation"
+            ));
+        }
+    }
+
+    let Some(map_delta) = unit.get("map_delta").and_then(Value::as_object) else {
+        errors.push(
+            "map_delta-missing: required object field is missing for worker contract v2.1".into(),
+        );
+        return quality;
+    };
+    let map_delta_value = Value::Object(map_delta.clone());
+    for key in [
+        "repo_purpose_candidates",
+        "major_modules",
+        "execution_flows",
+        "owner_questions",
+        "pre_use_checklist",
+    ] {
+        quality.map_delta_items_count +=
+            required_string_array_at(&map_delta_value, key, "map_delta", errors).len();
+    }
+
+    quality.relation_candidates_count = required_array(unit, "relation_candidates", errors).len();
+    quality.followup_candidates_count = required_followup_candidates(unit, errors);
+    quality.abstentions_count = validate_abstentions(unit, errors);
+    quality
+}
+
+fn required_nested_string(
+    value: &Value,
+    key: &str,
+    prefix: &str,
+    errors: &mut Vec<String>,
+) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            errors.push(format!(
+                "{prefix}.{key}-missing: required string field is missing"
+            ));
+            String::new()
+        })
+}
+
+fn required_followup_candidates(unit: &Value, errors: &mut Vec<String>) -> usize {
+    if let Some(items) = unit.get("followup_candidates").and_then(Value::as_array) {
+        return items.len();
+    }
+    if let Some(items) = unit.get("followup_suggestions").and_then(Value::as_array) {
+        return items.len();
+    }
+    errors.push(
+        "followup_candidates-missing: required array field is missing for worker contract v2.1"
+            .into(),
+    );
+    0
+}
+
+fn validate_abstentions(unit: &Value, errors: &mut Vec<String>) -> usize {
+    let abstentions = required_array(unit, "abstentions", errors);
+    for (index, abstention) in abstentions.iter().enumerate() {
+        let prefix = format!("abstentions[{index}]");
+        require_string(abstention, "reason", &prefix, errors);
+        require_string(abstention, "scope", &prefix, errors);
+    }
+    abstentions.len()
+}
+
+fn validate_low_value_analysis(quality: &QualityValidation, errors: &mut Vec<String>) {
+    let has_slice_specific_digest = !quality.digest_summary.trim().is_empty()
+        && !is_generic_uncertainty(&quality.digest_summary);
+    let contributes_to_map = quality.digest_points_count > 0
+        || quality.map_delta_items_count > 0
+        || quality.claims_count > 0
+        || quality.connections_count > 0
+        || quality.relation_candidates_count > 0
+        || quality.followup_candidates_count > 0
+        || quality.abstentions_count > 0;
+    if !has_slice_specific_digest && !contributes_to_map {
+        errors.push(
+            "unit-analysis-low-value: generic uncertainty boilerplate without slice-specific digest, map_delta, claim, connection, relation, followup, or scoped abstention"
+                .into(),
+        );
+    }
+}
+
+fn is_generic_uncertainty(value: &str) -> bool {
+    let text = value.trim().to_ascii_lowercase();
+    if text.is_empty() {
+        return true;
+    }
+    let generic = [
+        "this slice alone cannot determine",
+        "more context is needed",
+        "no conclusions can be drawn",
+        "cannot determine from this slice alone",
+        "insufficient information",
+    ];
+    generic
+        .iter()
+        .any(|needle| text == *needle || text.contains(needle))
 }
 
 fn validate_claim(
@@ -600,4 +758,138 @@ fn string_array_join(value: &Value, key: &str) -> String {
                 .join(",")
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn worker_contract_v21_accepts_quality_fields_without_claims() {
+        let unit = valid_quality_unit();
+        let result = validate_unit_value(&unit, &BTreeSet::new());
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+    }
+
+    #[test]
+    fn worker_contract_v21_requires_qualitative_digest() {
+        let mut unit = valid_quality_unit();
+        unit.as_object_mut().unwrap().remove("qualitative_digest");
+        let result = validate_unit_value(&unit, &BTreeSet::new());
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|error| error.contains("qualitative_digest-missing")),
+            "{:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn worker_contract_v21_rejects_generic_boilerplate_only() {
+        let unit = json!({
+            "unit_id": "U0001",
+            "allowed_paths": ["src/lib.rs"],
+            "forbidden_paths": [],
+            "claims": [],
+            "connections_observed": [],
+            "unresolved_questions": [],
+            "qualitative_digest": {
+                "summary": "This slice alone cannot determine the repository behavior.",
+                "important_points": [],
+                "scoped_uncertainty": []
+            },
+            "map_delta": {
+                "repo_purpose_candidates": [],
+                "major_modules": [],
+                "execution_flows": [],
+                "owner_questions": [],
+                "pre_use_checklist": []
+            },
+            "relation_candidates": [],
+            "followup_candidates": [],
+            "abstentions": []
+        });
+        let result = validate_unit_value(&unit, &BTreeSet::new());
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|error| error.contains("unit-analysis-low-value")),
+            "{:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn worker_contract_v21_accepts_legacy_followup_suggestions_alias() {
+        let mut unit = valid_quality_unit();
+        let object = unit.as_object_mut().unwrap();
+        object.remove("followup_candidates");
+        object.insert(
+            "followup_suggestions".into(),
+            json!(["Review adjacent package manifest."]),
+        );
+        let result = validate_unit_value(&unit, &BTreeSet::new());
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+    }
+
+    #[test]
+    fn worker_contract_v21_accepts_scoped_abstention() {
+        let unit = json!({
+            "unit_id": "U0001",
+            "allowed_paths": ["src/lib.rs"],
+            "forbidden_paths": [],
+            "claims": [],
+            "connections_observed": [],
+            "unresolved_questions": [],
+            "qualitative_digest": {
+                "summary": "",
+                "important_points": [],
+                "scoped_uncertainty": []
+            },
+            "map_delta": {
+                "repo_purpose_candidates": [],
+                "major_modules": [],
+                "execution_flows": [],
+                "owner_questions": [],
+                "pre_use_checklist": []
+            },
+            "relation_candidates": [],
+            "followup_candidates": [],
+            "abstentions": [
+                {"reason": "Export contained only redacted binary metadata.", "scope": "src/lib.rs"}
+            ]
+        });
+        let result = validate_unit_value(&unit, &BTreeSet::new());
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+    }
+
+    fn valid_quality_unit() -> Value {
+        json!({
+            "unit_id": "U0001",
+            "allowed_paths": ["src/lib.rs"],
+            "forbidden_paths": [],
+            "claims": [],
+            "connections_observed": [],
+            "unresolved_questions": [],
+            "qualitative_digest": {
+                "summary": "This slice defines a small Rust library module.",
+                "important_points": ["src/lib.rs is the visible library surface in this slice."],
+                "scoped_uncertainty": ["Only src/lib.rs was included in this unit export."]
+            },
+            "map_delta": {
+                "repo_purpose_candidates": ["Rust library module"],
+                "major_modules": ["src/lib.rs"],
+                "execution_flows": [],
+                "owner_questions": ["Which binary or package manifest wires this module into runtime use?"],
+                "pre_use_checklist": ["Review manifest scripts before installing."]
+            },
+            "relation_candidates": [],
+            "followup_candidates": [],
+            "abstentions": []
+        })
+    }
 }

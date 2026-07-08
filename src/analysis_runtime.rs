@@ -5,9 +5,9 @@
 
 use crate::cli::{
     AnalysisExportContentArgs, AnalysisImportArgs, AnalysisJobClaimArgs, AnalysisJobCompleteArgs,
-    AnalysisJobFailArgs, AnalyzeArgs, CleanArgs, DoctorArgs, GithubPlanArgs, InitArgs, InspectArgs,
-    ProgressMode, QuickArgs, QuickFlow, ReviewArgs, RunDirArgs, ScanArgs, ScanMode, SnapshotArgs,
-    WorkerBackend, WorkerDoctorArgs,
+    AnalysisJobFailArgs, AnalyzeArgs, BudgetGate, CleanArgs, CleanScope, DoctorArgs,
+    GithubPlanArgs, InitArgs, InspectArgs, ProgressMode, QuickArgs, QuickFlow, ReviewArgs,
+    RunDirArgs, ScanArgs, ScanMode, SnapshotArgs, WorkerBackend, WorkerDoctorArgs,
 };
 use crate::errors::ScvError;
 use crate::model::{PathPrivacyMode, SensitiveReviewMode};
@@ -24,8 +24,9 @@ use time::OffsetDateTime;
 
 const LOCAL_RUNTIME_STATE: &str = ".git-scv-runtime-local.json";
 const WORKER_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
-const UNIT_ANALYSIS_OUTPUT_CONTRACT_VERSION: &str = "unit-analysis-worker-contract-v2";
-const UNIT_ANALYSIS_OUTPUT_CONTRACT: &str = "unit_id, allowed_paths, forbidden_paths, claims[], connections_observed[], unresolved_questions[], optional qualitative_digest, optional map_delta, optional relation_candidates, optional followup_suggestions";
+const FOLLOWUP_REVIEW_BYTES: u64 = 64 * 1024;
+const UNIT_ANALYSIS_OUTPUT_CONTRACT_VERSION: &str = "unit-analysis-worker-contract-v2.1";
+const UNIT_ANALYSIS_OUTPUT_CONTRACT: &str = "unit_id, allowed_paths, forbidden_paths, claims[], connections_observed[], unresolved_questions[], qualitative_digest, map_delta, relation_candidates[], followup_candidates[], abstentions[]";
 
 #[derive(Clone, Copy)]
 struct WorkerLoopOptions {
@@ -34,6 +35,16 @@ struct WorkerLoopOptions {
     worker_delay_ms: u64,
     max_worker_calls_per_minute: u32,
     stop_on_worker_error: bool,
+    budget_gate: BudgetGate,
+    sample_jobs: usize,
+    continue_jobs: Option<usize>,
+    continue_percent: Option<u8>,
+    approve_worker_budget: bool,
+}
+
+enum WorkerLoopStop {
+    CompleteOrPaused,
+    BudgetWaiting,
 }
 
 struct WorkerAttemptFailure {
@@ -81,6 +92,11 @@ pub fn quick(args: QuickArgs) -> Result<(), ScvError> {
                 worker_delay_ms: 0,
                 max_worker_calls_per_minute: 0,
                 stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: None,
+                continue_percent: None,
+                approve_worker_budget: None,
                 resume: false,
                 sha256: None,
                 r#ref: "HEAD".into(),
@@ -104,6 +120,39 @@ pub fn quick(args: QuickArgs) -> Result<(), ScvError> {
                 worker_delay_ms: 0,
                 max_worker_calls_per_minute: 0,
                 stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: None,
+                continue_percent: None,
+                approve_worker_budget: None,
+                resume: false,
+                sha256: None,
+                r#ref: "HEAD".into(),
+            })
+        }
+        QuickFlow::WebSelectedPreflight => {
+            println!("quick_flow=web-selected-preflight");
+            println!("worker_started=false");
+            println!("code_body_analysis=limited");
+            println!("semantic_analysis_complete=false");
+            scan(ScanArgs {
+                target: args.target,
+                goal: crate::cli::ReviewGoal::Install,
+                mode: ScanMode::WebSelectedPreflight,
+                worker: WorkerBackend::Manual,
+                out: None,
+                path_privacy: PathPrivacyMode::RepoRelative,
+                progress: ProgressMode::Auto,
+                max_jobs: None,
+                retry_format_errors: 1,
+                worker_delay_ms: 0,
+                max_worker_calls_per_minute: 0,
+                stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: None,
+                continue_percent: None,
+                approve_worker_budget: None,
                 resume: false,
                 sha256: None,
                 r#ref: "HEAD".into(),
@@ -139,6 +188,11 @@ pub fn quick(args: QuickArgs) -> Result<(), ScvError> {
                 worker_delay_ms: 0,
                 max_worker_calls_per_minute: 0,
                 stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: None,
+                continue_percent: None,
+                approve_worker_budget: None,
                 resume: false,
                 sha256: None,
                 r#ref: "HEAD".into(),
@@ -170,6 +224,11 @@ pub fn quick(args: QuickArgs) -> Result<(), ScvError> {
                 worker_delay_ms: 0,
                 max_worker_calls_per_minute: 0,
                 stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: None,
+                continue_percent: None,
+                approve_worker_budget: None,
                 resume: false,
                 sha256: None,
                 r#ref: "HEAD".into(),
@@ -242,6 +301,31 @@ pub fn scan(args: ScanArgs) -> Result<(), ScvError> {
         );
         return Ok(());
     }
+    if args.mode == ScanMode::WebSelectedPreflight {
+        if !target_is_remote_plan {
+            return Err(ScvError::Usage(
+                "오류: scan --mode web-selected-preflight는 GitHub repo URL에만 사용할 수 있다."
+                    .into(),
+            ));
+        }
+        let run_dir = args.out.unwrap_or_else(|| default_review_out(&args.target));
+        crate::github_remote::selected_preflight(GithubPlanArgs {
+            repo_url: target_text,
+            r#ref: args.r#ref.clone(),
+            out: run_dir.clone(),
+        })?;
+        println!("scan_mode={}", args.mode.as_str());
+        println!("worker_backend={}", args.worker.as_str());
+        println!("source_status=web-selected-limited-not-acquired");
+        println!("source_acquisition=web-selected-preflight");
+        println!("code_body_analysis=limited");
+        println!("worker_started=false");
+        println!("semantic_analysis_complete=false");
+        println!(
+            "next_safe_command=git-scv scan <github-url> --mode pinned-snapshot --worker codex"
+        );
+        return Ok(());
+    }
     if args.mode == ScanMode::StrictVerifiedSnapshot {
         let Some(sha256) = args.sha256.clone() else {
             return Err(ScvError::Usage(
@@ -285,6 +369,11 @@ pub fn scan(args: ScanArgs) -> Result<(), ScvError> {
                 worker_delay_ms: args.worker_delay_ms,
                 max_worker_calls_per_minute: args.max_worker_calls_per_minute,
                 stop_on_worker_error: args.stop_on_worker_error,
+                budget_gate: args.budget_gate,
+                sample_jobs: args.sample_jobs,
+                continue_jobs: args.continue_jobs,
+                continue_percent: args.continue_percent,
+                approve_worker_budget: is_worker_budget_approved(&args),
             },
             args.progress,
         );
@@ -323,6 +412,7 @@ pub fn scan(args: ScanArgs) -> Result<(), ScvError> {
         write_local_runtime_state(&run_dir, &source_dir)?;
         write_pinned_source_acquisition(&run_dir, &plan, &self_observed_sha256)?;
         ensure_manifest_artifact_entry(&run_dir, "source_acquisition.json", false)?;
+        write_cleanup_manifest(&run_dir)?;
         refresh_manifest_and_binding(&run_dir)?;
         return run_scan_worker_phase(
             &run_dir,
@@ -333,6 +423,11 @@ pub fn scan(args: ScanArgs) -> Result<(), ScvError> {
                 worker_delay_ms: args.worker_delay_ms,
                 max_worker_calls_per_minute: args.max_worker_calls_per_minute,
                 stop_on_worker_error: args.stop_on_worker_error,
+                budget_gate: args.budget_gate,
+                sample_jobs: args.sample_jobs,
+                continue_jobs: args.continue_jobs,
+                continue_percent: args.continue_percent,
+                approve_worker_budget: is_worker_budget_approved(&args),
             },
             args.progress,
         );
@@ -376,6 +471,11 @@ pub fn scan(args: ScanArgs) -> Result<(), ScvError> {
             worker_delay_ms: args.worker_delay_ms,
             max_worker_calls_per_minute: args.max_worker_calls_per_minute,
             stop_on_worker_error: args.stop_on_worker_error,
+            budget_gate: args.budget_gate,
+            sample_jobs: args.sample_jobs,
+            continue_jobs: args.continue_jobs,
+            continue_percent: args.continue_percent,
+            approve_worker_budget: is_worker_budget_approved(&args),
         },
         args.progress,
     )
@@ -406,10 +506,16 @@ fn run_scan_worker_phase(
     ensure_manifest_artifact_entry(run_dir, "worker_backend.json", false)?;
     refresh_manifest_and_binding(run_dir)?;
     println!("worker_started=true");
-    run_worker_loop(run_dir, worker, options, progress)?;
-    continue_run(RunDirArgs {
-        run_dir: run_dir.to_path_buf(),
-    })
+    match run_worker_loop(run_dir, worker, options, progress)? {
+        WorkerLoopStop::CompleteOrPaused => continue_run(RunDirArgs {
+            run_dir: run_dir.to_path_buf(),
+        }),
+        WorkerLoopStop::BudgetWaiting => print_progress(run_dir),
+    }
+}
+
+fn is_worker_budget_approved(args: &ScanArgs) -> bool {
+    args.approve_worker_budget.as_deref() == Some("continue-worker-budget")
 }
 
 pub fn worker_doctor(args: WorkerDoctorArgs) -> Result<(), ScvError> {
@@ -490,14 +596,14 @@ fn quick_flow_options(target_is_github: bool) -> [QuickFlowOption; 3] {
                 flow: QuickFlow::WebMetadataPreflight,
             },
             QuickFlowOption {
+                label: "web selected preflight",
+                description: "limited README/package/workflow bodies, no worker",
+                flow: QuickFlow::WebSelectedPreflight,
+            },
+            QuickFlowOption {
                 label: "pinned snapshot source analysis",
                 description: "download pinned commit, Codex worker may use quota",
                 flow: QuickFlow::PinnedSnapshotAnalysis,
-            },
-            QuickFlowOption {
-                label: "local folder / already acquired source analysis",
-                description: "requires local path",
-                flow: QuickFlow::LocalFullWorker,
             },
         ]
     } else {
@@ -596,40 +702,52 @@ fn worker_remediation_hints(backend: WorkerBackend) -> Vec<&'static str> {
 
 pub fn clean(args: CleanArgs) -> Result<(), ScvError> {
     ensure_run_dir(&args.run_dir)?;
-    let candidates = [
-        args.run_dir.join("analysis").join("content-export"),
-        args.run_dir.join("analysis").join("manual-export"),
-        args.run_dir.join("analysis").join("worker-results"),
-    ];
-    println!("clean_scope=analysis-temporary-exports");
+    write_cleanup_manifest(&args.run_dir)?;
+    let candidates = cleanup_candidates(&args.run_dir, args.scope);
+    println!("clean_scope={}", clean_scope_label(args.scope));
     println!("source_repo_deleted=false");
     println!("run_dir_deleted=false");
-    for path in &candidates {
-        if path.exists() {
-            safety::assert_inside(&args.run_dir, path)?;
-            println!("candidate={}", path.display());
+    println!("cleanup_manifest=cleanup_manifest.json");
+    for candidate in &candidates {
+        if candidate.path.exists() {
+            println!("candidate={}", candidate.manifest_path);
+            println!("candidate_kind={}", candidate.kind);
+            println!("candidate_absolute_path_stored=false");
         }
     }
     if !args.apply {
         println!("clean_mode=dry-run");
-        println!("next_safe_command=git-scv clean <run-dir> --apply --ack clean-git-scv-run");
+        println!("next_safe_command={}", clean_next_command(args.scope));
         return Ok(());
     }
-    if args.ack.as_deref() != Some("clean-git-scv-run") {
-        return Err(ScvError::Usage(
-            "오류: clean --apply에는 --ack clean-git-scv-run 이 필요하다.".into(),
-        ));
+    if args.ack.as_deref() != Some(clean_ack(args.scope)) {
+        return Err(ScvError::Usage(format!(
+            "오류: clean --apply --scope {}에는 --ack {} 이 필요하다.",
+            clean_scope_label(args.scope),
+            clean_ack(args.scope)
+        )));
     }
-    for path in &candidates {
-        if path.exists() {
-            safety::assert_inside(&args.run_dir, path)?;
-            fs::remove_dir_all(path).map_err(|err| {
-                ScvError::Inspect(format!(
-                    "clean: 임시 분석 export를 삭제하지 못했다: {}: {err}",
-                    path.display()
-                ))
-            })?;
+    for candidate in &candidates {
+        if !candidate.path.exists() {
+            continue;
         }
+        if !candidate.delete_allowed {
+            return Err(ScvError::Validation(vec![format!(
+                "cleanup-delete-not-allowed:{}",
+                candidate.manifest_path
+            )]));
+        }
+        if candidate.must_be_inside_run_dir {
+            safety::assert_inside(&args.run_dir, &candidate.path)?;
+        } else {
+            ensure_owned_snapshot_source(&args.run_dir, &candidate.path)?;
+        }
+        fs::remove_dir_all(&candidate.path).map_err(|err| {
+            ScvError::Inspect(format!(
+                "clean: 임시 분석 export를 삭제하지 못했다: {}: {err}",
+                candidate.manifest_path
+            ))
+        })?;
     }
     append_event(
         &args.run_dir,
@@ -639,6 +757,164 @@ pub fn clean(args: CleanArgs) -> Result<(), ScvError> {
     refresh_manifest_and_binding(&args.run_dir)?;
     println!("clean_mode=applied");
     Ok(())
+}
+
+struct CleanupCandidate {
+    path: PathBuf,
+    manifest_path: String,
+    kind: &'static str,
+    delete_allowed: bool,
+    must_be_inside_run_dir: bool,
+}
+
+fn cleanup_candidates(run_dir: &Path, scope: CleanScope) -> Vec<CleanupCandidate> {
+    let mut candidates = Vec::new();
+    if matches!(scope, CleanScope::AnalysisTemp | CleanScope::All) {
+        for (path, manifest_path, kind) in [
+            (
+                run_dir.join("analysis").join("content-export"),
+                "analysis/content-export",
+                "temporary-content-export",
+            ),
+            (
+                run_dir.join("analysis").join("manual-export"),
+                "analysis/manual-export",
+                "manual-export-bundle",
+            ),
+            (
+                run_dir.join("analysis").join("worker-results"),
+                "analysis/worker-results",
+                "worker-result-buffer",
+            ),
+            (
+                run_dir.join("analysis").join("job-results"),
+                "analysis/job-results",
+                "validated-job-result-copy",
+            ),
+        ] {
+            candidates.push(CleanupCandidate {
+                path,
+                manifest_path: manifest_path.into(),
+                kind,
+                delete_allowed: true,
+                must_be_inside_run_dir: true,
+            });
+        }
+    }
+    if matches!(scope, CleanScope::SnapshotSource | CleanScope::All) {
+        if let Some(path) = git_scv_owned_snapshot_source_path(run_dir) {
+            candidates.push(CleanupCandidate {
+                path,
+                manifest_path: "<git-scv-owned-snapshot-source>".into(),
+                kind: "snapshot-source",
+                delete_allowed: true,
+                must_be_inside_run_dir: false,
+            });
+        }
+    }
+    candidates
+}
+
+fn write_cleanup_manifest(run_dir: &Path) -> Result<(), ScvError> {
+    let mut created_by_git_scv = Vec::new();
+    for candidate in cleanup_candidates(run_dir, CleanScope::All) {
+        created_by_git_scv.push(json!({
+            "path": candidate.manifest_path,
+            "kind": candidate.kind,
+            "exists": candidate.path.exists(),
+            "delete_allowed": candidate.delete_allowed,
+            "absolute_path_stored": false,
+            "inside_run_dir": candidate.must_be_inside_run_dir,
+            "source_repo": false
+        }));
+    }
+    let source_is_user_local = source_root_for_runtime(run_dir)
+        .ok()
+        .is_some_and(|path| git_scv_owned_snapshot_source_path(run_dir).as_ref() != Some(&path));
+    let value = json!({
+        "artifact_kind": "cleanup_manifest",
+        "schema_version": "1",
+        "contract_version": "artifact-contract-v2",
+        "producer": {"name": "git-scv", "version": env!("CARGO_PKG_VERSION")},
+        "min_reader_version": env!("CARGO_PKG_VERSION"),
+        "created_by_git_scv": created_by_git_scv,
+        "never_touch": [
+            "oauth-token-storage",
+            "api-key-files",
+            "user-home-auth-cache",
+            "codex-auth-cache",
+            "claude-auth-cache",
+            "target-source-repo-when-not-created-by-git-scv"
+        ],
+        "source_repo_deleted": false,
+        "user_local_source_repo_delete_allowed": false,
+        "user_local_source_repo_detected": source_is_user_local,
+        "auth_storage_touched": false,
+        "auth_storage_stat_list_read_hash_delete_write_serialize": false,
+        "absolute_paths_stored": false
+    });
+    write_artifact(run_dir, "cleanup_manifest.json", &value)?;
+    ensure_manifest_artifact_entry(run_dir, "cleanup_manifest.json", false)
+}
+
+fn git_scv_owned_snapshot_source_path(run_dir: &Path) -> Option<PathBuf> {
+    let acquisition = read_artifact(run_dir, "source_acquisition.json").ok()?;
+    let kind = string_field(&acquisition, "source_acquisition", "");
+    if !matches!(
+        kind.as_str(),
+        "pinned-snapshot" | "strict-verified-snapshot"
+    ) {
+        return None;
+    }
+    let local = read_artifact(run_dir, LOCAL_RUNTIME_STATE).ok()?;
+    let source_path = PathBuf::from(string_field(&local, "source_path", ""));
+    if source_path.file_name().and_then(|name| name.to_str()) != Some("source") {
+        return None;
+    }
+    let run_parent = run_dir.parent()?;
+    if source_path.parent()? != run_parent {
+        return None;
+    }
+    Some(source_path)
+}
+
+fn ensure_owned_snapshot_source(run_dir: &Path, path: &Path) -> Result<(), ScvError> {
+    let Some(owned) = git_scv_owned_snapshot_source_path(run_dir) else {
+        return Err(ScvError::Validation(vec![
+            "cleanup-owned-snapshot-source-missing".into(),
+        ]));
+    };
+    if owned == path {
+        Ok(())
+    } else {
+        Err(ScvError::Validation(vec![
+            "cleanup-path-not-owned-snapshot-source".into(),
+        ]))
+    }
+}
+
+fn clean_scope_label(scope: CleanScope) -> &'static str {
+    match scope {
+        CleanScope::AnalysisTemp => "analysis-temp",
+        CleanScope::SnapshotSource => "snapshot-source",
+        CleanScope::All => "all",
+    }
+}
+
+fn clean_ack(scope: CleanScope) -> &'static str {
+    match scope {
+        CleanScope::AnalysisTemp => "clean-git-scv-run",
+        CleanScope::SnapshotSource => "delete-git-scv-created-snapshot-source",
+        CleanScope::All => "clean-git-scv-owned-runtime",
+    }
+}
+
+fn clean_next_command(scope: CleanScope) -> String {
+    format!(
+        "git-scv clean <run-dir> --scope {} --apply --ack {}",
+        clean_scope_label(scope),
+        clean_ack(scope)
+    )
 }
 
 pub fn review(args: ReviewArgs) -> Result<(), ScvError> {
@@ -690,6 +966,8 @@ fn review_inner(
     };
     crate::inspect::run(inspect_args)?;
     write_local_runtime_state(&run_dir, &target)?;
+    write_cleanup_manifest(&run_dir)?;
+    refresh_manifest_and_binding(&run_dir)?;
     if emit_metadata {
         println!("review_goal={}", args.goal.as_str());
         println!("review_run_dir={}", run_dir.display());
@@ -771,6 +1049,7 @@ pub fn analyze(args: AnalyzeArgs) -> Result<(), ScvError> {
         write_json_value(&path, &bundle)?;
     }
     write_export_work_order(&args.run_dir, &export_dir)?;
+    write_cleanup_manifest(&args.run_dir)?;
 
     append_event(
         &args.run_dir,
@@ -817,6 +1096,8 @@ pub fn import(args: AnalysisImportArgs) -> Result<(), ScvError> {
     } else {
         update_state_after_import(&args.run_dir, units.len())?;
     }
+    write_cleanup_manifest(&args.run_dir)?;
+    refresh_runtime_architecture_html(&args.run_dir)?;
     append_event(
         &args.run_dir,
         "unit-analysis-imported",
@@ -929,8 +1210,9 @@ pub fn job_complete(args: AnalysisJobCompleteArgs) -> Result<(), ScvError> {
         )]));
     }
 
-    let result_ref = persist_job_result(&args.run_dir, &args.job, &units)?;
-    append_units(&args.run_dir, &units)?;
+    let stored_units = annotate_units_with_job(&units, &args.job);
+    let result_ref = persist_job_result(&args.run_dir, &args.job, &stored_units)?;
+    append_units(&args.run_dir, &stored_units)?;
     if let Some(object) = jobs[index].as_object_mut() {
         object.insert("status".into(), Value::String("completed".into()));
         object.insert("result_ref".into(), Value::String(result_ref.clone()));
@@ -951,6 +1233,8 @@ pub fn job_complete(args: AnalysisJobCompleteArgs) -> Result<(), ScvError> {
         build_analysis_map_with_status(&args.run_dir, completed, !runnable_remaining)?;
     write_artifact(&args.run_dir, "analysis_map.json", &analysis_map)?;
     update_state_from_jobs(&args.run_dir)?;
+    write_cleanup_manifest(&args.run_dir)?;
+    refresh_runtime_architecture_html(&args.run_dir)?;
     append_event(
         &args.run_dir,
         "analysis-job-completed",
@@ -981,6 +1265,8 @@ pub fn job_fail(args: AnalysisJobFailArgs) -> Result<(), ScvError> {
     }
     write_jsonl_values(&args.run_dir, "analysis_jobs.jsonl", &jobs)?;
     update_state_from_jobs(&args.run_dir)?;
+    write_cleanup_manifest(&args.run_dir)?;
+    refresh_runtime_architecture_html(&args.run_dir)?;
     append_event(
         &args.run_dir,
         "analysis-job-failed",
@@ -1052,7 +1338,7 @@ pub fn export_content(args: AnalysisExportContentArgs) -> Result<(), ScvError> {
     })?;
     let export_path = export_dir.join(format!("{}.json", args.job));
     safety::assert_inside(&args.run_dir, &export_path)?;
-    let value = json!({
+    let mut value = json!({
         "artifact_kind": "analysis_content_export",
         "schema_version": "1",
         "contract_version": "artifact-contract-v2",
@@ -1066,7 +1352,16 @@ pub fn export_content(args: AnalysisExportContentArgs) -> Result<(), ScvError> {
         "redaction_labels": redaction_labels,
         "target_repo_commands_executed": false,
     });
+    if let Some(object) = value.as_object_mut() {
+        copy_optional_string(job, object, "job_kind");
+        copy_optional_string(job, object, "source_followup_job_id");
+        copy_optional_string(job, object, "followup_question");
+        copy_optional_string(job, object, "followup_context");
+        copy_optional_string(job, object, "parent_unit_id");
+    }
     write_json_value(&export_path, &value)?;
+    write_cleanup_manifest(&args.run_dir)?;
+    refresh_manifest_and_binding(&args.run_dir)?;
     println!("content_export={}", export_path.display());
     println!("raw_content_stored=false");
     println!("target_repo_commands_executed=false");
@@ -1078,20 +1373,48 @@ fn run_worker_loop(
     backend: WorkerBackend,
     options: WorkerLoopOptions,
     progress: ProgressMode,
-) -> Result<(), ScvError> {
+) -> Result<WorkerLoopStop, ScvError> {
     append_event(
         run_dir,
         "worker-loop-started",
         &format!("worker backend {} started", backend.as_str()),
     )?;
+    let budget_policy = worker_budget_policy(run_dir, backend, options)?;
+    let limit = min_optional_limit(options.max_jobs, budget_policy.job_limit);
+    let started = Instant::now();
     let mut processed = 0usize;
     loop {
         print_scan_progress(run_dir, progress, "worker-loop")?;
-        if options.max_jobs.is_some_and(|limit| processed >= limit) {
+        if limit.is_some_and(|limit| processed >= limit) {
+            if budget_policy.wait_for_user_after_limit {
+                write_worker_budget_estimate(
+                    run_dir,
+                    backend,
+                    budget_policy.sample_jobs_requested,
+                    processed,
+                    started.elapsed(),
+                )?;
+                append_event(
+                    run_dir,
+                    "worker-budget-waiting-user",
+                    "worker sample complete; waiting for budget approval",
+                )?;
+                print_scan_progress(run_dir, progress, "worker-budget-waiting-user")?;
+                return Ok(WorkerLoopStop::BudgetWaiting);
+            }
             append_event(run_dir, "worker-loop-paused", "max job limit reached")?;
             break;
         }
         let Some(job_id) = claim_next_job_internal(run_dir, backend.agent_name())? else {
+            let promoted = promote_followup_jobs_to_analysis_jobs(run_dir)?;
+            if promoted > 0 {
+                append_event(
+                    run_dir,
+                    "analysis-followup-promoted",
+                    &format!("{promoted} follow-up jobs promoted into the worker queue"),
+                )?;
+                continue;
+            }
             append_event(
                 run_dir,
                 "worker-loop-complete",
@@ -1140,7 +1463,354 @@ fn run_worker_loop(
         processed += 1;
         sleep_between_worker_calls(options);
     }
-    print_scan_progress(run_dir, progress, "worker-loop-done")
+    print_scan_progress(run_dir, progress, "worker-loop-done")?;
+    Ok(WorkerLoopStop::CompleteOrPaused)
+}
+
+struct WorkerBudgetPolicy {
+    job_limit: Option<usize>,
+    sample_jobs_requested: usize,
+    wait_for_user_after_limit: bool,
+}
+
+fn worker_budget_policy(
+    run_dir: &Path,
+    backend: WorkerBackend,
+    options: WorkerLoopOptions,
+) -> Result<WorkerBudgetPolicy, ScvError> {
+    if !is_real_paid_worker(backend) || options.budget_gate == BudgetGate::Off {
+        return Ok(WorkerBudgetPolicy {
+            job_limit: None,
+            sample_jobs_requested: 0,
+            wait_for_user_after_limit: false,
+        });
+    }
+    if options.approve_worker_budget {
+        return Ok(WorkerBudgetPolicy {
+            job_limit: approved_budget_limit(run_dir, options)?,
+            sample_jobs_requested: options.sample_jobs,
+            wait_for_user_after_limit: false,
+        });
+    }
+    let sample = options.sample_jobs.max(1);
+    Ok(WorkerBudgetPolicy {
+        job_limit: Some(sample),
+        sample_jobs_requested: sample,
+        wait_for_user_after_limit: true,
+    })
+}
+
+fn is_real_paid_worker(backend: WorkerBackend) -> bool {
+    matches!(backend, WorkerBackend::Codex | WorkerBackend::Claude)
+}
+
+fn approved_budget_limit(
+    run_dir: &Path,
+    options: WorkerLoopOptions,
+) -> Result<Option<usize>, ScvError> {
+    if let Some(limit) = options.continue_jobs {
+        return Ok(Some(limit));
+    }
+    if let Some(percent) = options.continue_percent {
+        let total = read_jsonl_values(run_dir, "analysis_jobs.jsonl")?
+            .into_iter()
+            .filter(|job| string_field(job, "status", "") != "blocked")
+            .count();
+        let percent = usize::from(percent.clamp(1, 100));
+        let limit = total.saturating_mul(percent).div_ceil(100).max(1);
+        return Ok(Some(limit));
+    }
+    Ok(None)
+}
+
+fn min_optional_limit(left: Option<usize>, right: Option<usize>) -> Option<usize> {
+    match (left, right) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
+    }
+}
+
+fn write_worker_budget_estimate(
+    run_dir: &Path,
+    backend: WorkerBackend,
+    sample_jobs_requested: usize,
+    processed_in_sample: usize,
+    elapsed: Duration,
+) -> Result<(), ScvError> {
+    let jobs = read_jsonl_values(run_dir, "analysis_jobs.jsonl")?;
+    let completed = jobs
+        .iter()
+        .filter(|job| string_field(job, "status", "") == "completed")
+        .count();
+    let failed = jobs
+        .iter()
+        .filter(|job| string_field(job, "status", "") == "failed")
+        .count();
+    let blocked = jobs
+        .iter()
+        .filter(|job| string_field(job, "status", "") == "blocked")
+        .count();
+    let total = jobs.len();
+    let remaining = jobs
+        .iter()
+        .filter(|job| {
+            matches!(
+                string_field(job, "status", "").as_str(),
+                "queued" | "claimed"
+            )
+        })
+        .count();
+    let avg_duration_ms = if processed_in_sample == 0 {
+        0
+    } else {
+        (elapsed.as_millis() / processed_in_sample as u128) as u64
+    };
+    let estimate = json!({
+        "artifact_kind": "worker_budget_estimate",
+        "schema_version": "1",
+        "contract_version": "artifact-contract-v2",
+        "producer": {"name": "git-scv", "version": env!("CARGO_PKG_VERSION")},
+        "min_reader_version": env!("CARGO_PKG_VERSION"),
+        "backend": backend.as_str(),
+        "sample_jobs_requested": sample_jobs_requested,
+        "sample_jobs_processed": processed_in_sample,
+        "sample_jobs_completed": completed,
+        "sample_jobs_failed": failed,
+        "jobs_blocked": blocked,
+        "avg_duration_ms": avg_duration_ms,
+        "observed_format_error_rate": 0.0,
+        "estimated_total_jobs": total,
+        "estimated_worker_calls_remaining": remaining,
+        "estimated_remaining_duration_ms": avg_duration_ms.saturating_mul(remaining as u64),
+        "paid_usage_warning": true,
+        "auth_storage_read": false,
+        "requires_user_decision": true,
+        "target_repo_commands_executed": false,
+        "next_safe_commands": [
+            "git-scv scan <same-target> --out <run-dir> --resume --worker <backend> --continue-jobs 25 --approve-worker-budget continue-worker-budget",
+            "git-scv scan <same-target> --out <run-dir> --resume --worker <backend> --continue-percent 10 --approve-worker-budget continue-worker-budget"
+        ]
+    });
+    write_artifact(run_dir, "worker_budget_estimate.json", &estimate)?;
+    ensure_manifest_artifact_entry(run_dir, "worker_budget_estimate.json", false)?;
+    update_state_for_budget_wait(run_dir, remaining)?;
+    refresh_runtime_architecture_html(run_dir)?;
+    refresh_manifest_and_binding(run_dir)
+}
+
+fn update_state_for_budget_wait(run_dir: &Path, remaining: usize) -> Result<(), ScvError> {
+    let mut state = read_artifact(run_dir, "analysis_state.json")?;
+    if let Some(object) = state.as_object_mut() {
+        object.insert(
+            "analysis_stage".into(),
+            Value::String("worker-budget-waiting-user".into()),
+        );
+        object.insert(
+            "final_report_status".into(),
+            Value::String("blocked-until-worker-budget-approval".into()),
+        );
+        object.insert(
+            "worker_budget_status".into(),
+            Value::String("waiting-user-decision".into()),
+        );
+        object.insert(
+            "worker_jobs_remaining_after_sample".into(),
+            Value::Number((remaining as u64).into()),
+        );
+        object.insert(
+            "next_safe_command".into(),
+            Value::String(
+                "review worker_budget_estimate.json, then continue with --approve-worker-budget continue-worker-budget".into(),
+            ),
+        );
+    }
+    write_artifact(run_dir, "analysis_state.json", &state)
+}
+
+fn promote_followup_jobs_to_analysis_jobs(run_dir: &Path) -> Result<usize, ScvError> {
+    let followup_path = run_dir.join("analysis_followup_jobs.jsonl");
+    if !followup_path.is_file() {
+        return Ok(0);
+    }
+    let root = match source_root_for_runtime(run_dir) {
+        Ok(root) => root,
+        Err(_) => return Ok(0),
+    };
+    let mut followups = read_jsonl_values(run_dir, "analysis_followup_jobs.jsonl")?;
+    let mut jobs = read_jsonl_values(run_dir, "analysis_jobs.jsonl")?;
+    let binding = read_artifact(run_dir, "work_order_binding.json")?;
+    let state = read_artifact(run_dir, "analysis_state.json")?;
+    let run_id = string_field(&state, "run_id", "");
+    let source_fingerprint_hash =
+        string_field(&binding, "source_fingerprint_hash", "sha256:unknown");
+    let work_order_sha256 = string_field(&binding, "work_order_sha256", "sha256:unknown");
+    let mut promoted = 0usize;
+    let mut changed_followups = false;
+
+    for followup in &mut followups {
+        let followup_id = string_field(followup, "followup_job_id", "");
+        if followup_id.is_empty() || analysis_job_exists(&jobs, &followup_id) {
+            continue;
+        }
+        if string_field(followup, "status", "queued") != "queued" {
+            continue;
+        }
+        let Some(path) = followup_path_candidate(followup) else {
+            mark_followup_blocked(followup, "followup-source-path-unresolved");
+            changed_followups = true;
+            continue;
+        };
+        if let Err(err) = ensure_repo_relative(&path) {
+            mark_followup_blocked(followup, &err.user_message());
+            changed_followups = true;
+            continue;
+        }
+        let source_path = root.join(&path);
+        if !source_path.is_file() {
+            mark_followup_blocked(followup, "followup-source-file-missing");
+            changed_followups = true;
+            continue;
+        }
+        let file_size = source_path
+            .metadata()
+            .map_err(|err| {
+                ScvError::Inspect(format!(
+                    "analysis follow-up: source metadata read failed: {path}: {err}"
+                ))
+            })?
+            .len();
+        let byte_end = file_size.min(FOLLOWUP_REVIEW_BYTES);
+        jobs.push(json!({
+            "job_id": followup_id,
+            "run_id": run_id,
+            "input_id": Value::Null,
+            "sub_slice_id": string_field(followup, "source_unit_id", "followup"),
+            "path": path,
+            "included_range": format!("bytes:0-{byte_end}"),
+            "status": "queued",
+            "priority": followup_priority(followup),
+            "blocked_by": [],
+            "required_gate": Value::Null,
+            "claim_receipt_id": Value::Null,
+            "result_ref": Value::Null,
+            "source_fingerprint_hash": source_fingerprint_hash.clone(),
+            "work_order_sha256": work_order_sha256.clone(),
+            "raw_content_stored": false,
+            "target_repo_commands_executed": false,
+            "job_kind": format!("followup-{}", string_field(followup, "kind", "relation-review")),
+            "source_followup_job_id": followup_id,
+            "parent_unit_id": string_field(followup, "source_unit_id", "unknown-unit"),
+            "followup_depth": 1,
+            "followup_question": followup_question(followup),
+            "followup_context": followup_context(followup)
+        }));
+        if let Some(object) = followup.as_object_mut() {
+            object.insert("status".into(), Value::String("promoted".into()));
+            object.insert(
+                "promoted_analysis_job_id".into(),
+                Value::String(followup_id.clone()),
+            );
+            object.insert("path".into(), Value::String(path));
+        }
+        promoted += 1;
+        changed_followups = true;
+    }
+
+    if promoted > 0 {
+        write_jsonl_values(run_dir, "analysis_jobs.jsonl", &jobs)?;
+        update_state_from_jobs(run_dir)?;
+    }
+    if changed_followups {
+        write_jsonl_values(run_dir, "analysis_followup_jobs.jsonl", &followups)?;
+        refresh_manifest_and_binding(run_dir)?;
+    }
+    Ok(promoted)
+}
+
+fn analysis_job_exists(jobs: &[Value], job_id: &str) -> bool {
+    jobs.iter()
+        .any(|job| string_field(job, "job_id", "") == job_id)
+}
+
+fn mark_followup_blocked(followup: &mut Value, reason: &str) {
+    if let Some(object) = followup.as_object_mut() {
+        object.insert("status".into(), Value::String("blocked".into()));
+        object.insert(
+            "blocked_by".into(),
+            json!([redact_command_excerpt(reason).as_str()]),
+        );
+    }
+}
+
+fn followup_priority(followup: &Value) -> String {
+    match string_field(followup, "kind", "").as_str() {
+        "execution-path-review" | "risk-path-review" => "high".into(),
+        _ => "medium".into(),
+    }
+}
+
+fn followup_question(followup: &Value) -> String {
+    let summary = string_field(followup, "summary", "");
+    if !summary.trim().is_empty() {
+        return redact_command_excerpt(&summary).as_str().to_string();
+    }
+    let kind = string_field(followup, "kind", "relation-review");
+    let from = string_field(followup, "from", "unknown");
+    let to = string_field(followup, "to", "unknown");
+    redact_command_excerpt(&format!(
+        "Review this {kind} follow-up and explain the relationship between {from} and {to} without executing target repo commands."
+    ))
+    .as_str()
+    .to_string()
+}
+
+fn followup_context(followup: &Value) -> String {
+    let reason = string_field(
+        followup,
+        "reason",
+        "unit-analysis requested follow-up review",
+    );
+    let relation_kind = string_field(followup, "relation_kind", "unknown-relation");
+    redact_command_excerpt(&format!("{reason}; relation_kind={relation_kind}"))
+        .as_str()
+        .to_string()
+}
+
+fn followup_path_candidate(followup: &Value) -> Option<String> {
+    for key in ["path", "source_path", "target_path"] {
+        if let Some(path) = followup.get(key).and_then(Value::as_str) {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    for key in ["from", "to"] {
+        let value = string_field(followup, key, "");
+        if let Some(path) = relation_path_candidate(&value) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn relation_path_candidate(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let path = trimmed
+        .strip_prefix("file:")
+        .or_else(|| trimmed.strip_prefix("manifest:"))
+        .or_else(|| trimmed.strip_prefix("script:"))
+        .unwrap_or(trimmed);
+    let path = path.split('#').next().unwrap_or(path).trim();
+    if path.is_empty()
+        || path.contains("://")
+        || path.starts_with("unknown:")
+        || path.starts_with("scenario:")
+    {
+        return None;
+    }
+    Some(path.to_string())
 }
 
 fn claim_next_job_internal(run_dir: &Path, agent: &str) -> Result<Option<String>, ScvError> {
@@ -1476,6 +2146,7 @@ fn worker_repair_prompt(
     prompt.push_str(
         "\n\nYour previous answer did not pass Git-SCV validation. Return corrected JSON only.\n\
 Do not add Markdown. Preserve the same unit_id and allowed_paths.\n\
+Contract version: unit-analysis-worker-contract-v2.1.\n\
 Validation errors:\n",
     );
     for error in validation_errors.iter().take(20) {
@@ -1624,7 +2295,7 @@ fn worker_prompt(job_id: &str, export_path: &Path) -> Result<String, ScvError> {
     Ok(format!(
         "You are a Git-SCV slice analysis worker.\n\
 Return ONLY one JSON object. Do not wrap it in Markdown fences.\n\
-The object MUST match Git-SCV unit-analysis contract v2:\n\
+The object MUST match Git-SCV unit-analysis contract v2.1:\n\
 {{\n\
   \"unit_id\": \"U-{job_id}\",\n\
   \"allowed_paths\": [\"<repo-relative path from content export>\"],\n\
@@ -1664,7 +2335,8 @@ The object MUST match Git-SCV unit-analysis contract v2:\n\
     \"pre_use_checklist\": []\n\
   }},\n\
   \"relation_candidates\": [],\n\
-  \"followup_suggestions\": []\n\
+  \"followup_candidates\": [],\n\
+  \"abstentions\": []\n\
 }}\n\
 Rules:\n\
 - Do not run target repository commands.\n\
@@ -1672,6 +2344,7 @@ Rules:\n\
 - Do not include raw secrets, tokens, URL queries, URL fragments, or raw lifecycle commands.\n\
 - Use evidence_refs only when the export provides matching evidence ids. If no evidence id is available, keep claims/connections empty and use qualitative_digest/map_delta instead.\n\
 - Avoid generic uncertainty boilerplate. Uncertainty must be scoped to this slice, missing evidence, redaction, parser gaps, or unresolved relations.\n\
+- Each successful result must contribute at least one slice-specific qualitative_digest, map_delta, claim, connection, relation, followup candidate, or scoped abstention.\n\
 - Do not claim malware absence, install safety, run safety, or complete semantic truth.\n\n\
 Content export JSON:\n{export}\n"
     ))
@@ -1895,6 +2568,8 @@ pub fn report_final(args: RunDirArgs) -> Result<(), ScvError> {
     let html = final_report_html(&markdown);
     write_text(&args.run_dir, "final_user_report.md", &markdown)?;
     write_text(&args.run_dir, "final_user_report.html", &html)?;
+    update_state_final_report_complete(&args.run_dir)?;
+    refresh_runtime_architecture_html(&args.run_dir)?;
     append_event(
         &args.run_dir,
         "final-report-complete",
@@ -1913,13 +2588,38 @@ pub fn report_final(args: RunDirArgs) -> Result<(), ScvError> {
     Ok(())
 }
 
+fn update_state_final_report_complete(run_dir: &Path) -> Result<(), ScvError> {
+    let mut state = read_artifact(run_dir, "analysis_state.json")?;
+    if let Some(object) = state.as_object_mut() {
+        object.insert(
+            "analysis_stage".into(),
+            Value::String("final-report-complete".into()),
+        );
+        object.insert(
+            "final_report_status".into(),
+            Value::String("final-report-complete".into()),
+        );
+        object.insert(
+            "next_safe_command".into(),
+            Value::String("read final_user_report.md and verify source before execution".into()),
+        );
+    }
+    write_artifact(run_dir, "analysis_state.json", &state)
+}
+
 fn build_analysis_map_with_status(
     run_dir: &Path,
     imported_units: usize,
     map_complete: bool,
 ) -> Result<Value, ScvError> {
     let state = read_artifact(run_dir, "analysis_state.json")?;
-    let aggregate = aggregate_unit_analysis(run_dir)?;
+    let mut aggregate = aggregate_unit_analysis(run_dir)?;
+    merge_followup_job_status(run_dir, &mut aggregate.followup_jobs)?;
+    let followup_required = aggregate
+        .followup_jobs
+        .iter()
+        .any(followup_status_requires_more_work);
+    let map_complete = map_complete && !followup_required;
     if !aggregate.followup_jobs.is_empty() {
         write_jsonl_values(
             run_dir,
@@ -1934,6 +2634,7 @@ fn build_analysis_map_with_status(
         "producer": {"name": "git-scv", "version": env!("CARGO_PKG_VERSION")},
         "min_reader_version": env!("CARGO_PKG_VERSION"),
         "run_id": string_field(&state, "run_id", ""),
+        "source_fingerprint_hash": string_field(&state, "source_fingerprint_hash", "sha256:unknown"),
         "analysis_stage": if map_complete { "analysis-map-complete" } else { "unit-analysis-in-progress" },
         "unit_analysis_required": true,
         "map_complete": map_complete,
@@ -1946,8 +2647,12 @@ fn build_analysis_map_with_status(
         "scoped_uncertainty": aggregate.scoped_uncertainty,
         "relation_candidates": aggregate.relation_candidates,
         "unresolved_relations": aggregate.unresolved_relations,
+        "worker_progress": worker_progress_summary(run_dir),
+        "budget_gate": budget_gate_summary(run_dir),
+        "followup_jobs": aggregate.followup_jobs,
         "followup_jobs_count": aggregate.followup_jobs.len(),
-        "followup_required": !aggregate.followup_jobs.is_empty(),
+        "followup_required": followup_required,
+        "final_report_status": if map_complete { "ready-to-generate" } else { "blocked-until-analysis-map-complete" },
         "owner_questions": fallback_strings(aggregate.owner_questions, &[
             "Which install/build/test/run commands are officially supported?",
             "Which scripts are expected to perform network or filesystem writes?"
@@ -1975,6 +2680,47 @@ struct UnitAnalysisAggregate {
     pre_use_checklist: Vec<String>,
 }
 
+fn worker_progress_summary(run_dir: &Path) -> Value {
+    let jobs = read_jsonl_values(run_dir, "analysis_jobs.jsonl").unwrap_or_default();
+    let count = |status: &str| {
+        jobs.iter()
+            .filter(|job| string_field(job, "status", "") == status)
+            .count()
+    };
+    let followup_jobs = jobs
+        .iter()
+        .filter(|job| string_field(job, "job_id", "").starts_with("FU"))
+        .count();
+    json!({
+        "total_jobs": jobs.len(),
+        "primary_jobs": jobs.len().saturating_sub(followup_jobs),
+        "followup_jobs": followup_jobs,
+        "queued": count("queued"),
+        "claimed": count("claimed"),
+        "completed": count("completed"),
+        "failed": count("failed"),
+        "blocked": count("blocked"),
+        "target_repo_commands_executed": false
+    })
+}
+
+fn budget_gate_summary(run_dir: &Path) -> Value {
+    match read_artifact(run_dir, "worker_budget_estimate.json") {
+        Ok(estimate) => json!({
+            "status": "waiting-user-decision",
+            "sample_jobs_processed": number_field(&estimate, "sample_jobs_processed"),
+            "estimated_worker_calls_remaining": number_field(&estimate, "estimated_worker_calls_remaining"),
+            "paid_usage_warning": estimate.get("paid_usage_warning").and_then(Value::as_bool).unwrap_or(false),
+            "auth_storage_read": estimate.get("auth_storage_read").and_then(Value::as_bool).unwrap_or(false)
+        }),
+        Err(_) => json!({
+            "status": "not-waiting",
+            "paid_usage_warning": false,
+            "auth_storage_read": false
+        }),
+    }
+}
+
 fn aggregate_unit_analysis(run_dir: &Path) -> Result<UnitAnalysisAggregate, ScvError> {
     let path = run_dir.join("unit_analysis.jsonl");
     if !path.is_file() {
@@ -1984,6 +2730,10 @@ fn aggregate_unit_analysis(run_dir: &Path) -> Result<UnitAnalysisAggregate, ScvE
     let mut aggregate = UnitAnalysisAggregate::default();
     for unit in &units {
         let unit_id = string_field(unit, "unit_id", "unknown-unit");
+        let source_is_followup = unit
+            .get("source_analysis_job_is_followup")
+            .and_then(Value::as_bool)
+            .unwrap_or_else(|| string_field(unit, "source_analysis_job_id", "").starts_with("FU"));
         if let Some(digest) = unit.get("qualitative_digest") {
             if let Some(summary) = digest.get("summary").and_then(Value::as_str) {
                 unique_push(
@@ -2021,31 +2771,119 @@ fn aggregate_unit_analysis(run_dir: &Path) -> Result<UnitAnalysisAggregate, ScvE
                     &mut aggregate.unresolved_relations,
                     relation_summary(&unit_id, relation),
                 );
-                aggregate.followup_jobs.push(followup_job_from_relation(
-                    aggregate.followup_jobs.len() + 1,
-                    &unit_id,
-                    relation,
-                ));
+                if !source_is_followup {
+                    aggregate.followup_jobs.push(followup_job_from_relation(
+                        aggregate.followup_jobs.len() + 1,
+                        &unit_id,
+                        relation,
+                    ));
+                }
             }
         }
-        if let Some(suggestions) = unit.get("followup_suggestions").and_then(Value::as_array) {
-            for suggestion in suggestions {
+        if !source_is_followup {
+            for suggestion in followup_candidate_values(unit) {
                 let summary = suggestion
-                    .as_str()
+                    .get("summary")
+                    .and_then(Value::as_str)
                     .map(str::to_string)
+                    .or_else(|| suggestion.as_str().map(str::to_string))
                     .unwrap_or_else(|| suggestion.to_string());
-                aggregate.followup_jobs.push(json!({
+                let mut job = json!({
                     "followup_job_id": format!("FU{:04}", aggregate.followup_jobs.len() + 1),
                     "kind": "suggested-followup",
                     "status": "queued",
                     "source_unit_id": unit_id,
                     "summary": redact_command_excerpt(&summary).as_str(),
                     "target_repo_commands_executed": false
-                }));
+                });
+                if let Some(path) = followup_path_candidate(suggestion) {
+                    if ensure_repo_relative(&path).is_ok() {
+                        if let Some(object) = job.as_object_mut() {
+                            object.insert("path".into(), Value::String(path));
+                        }
+                    }
+                }
+                aggregate.followup_jobs.push(job);
             }
         }
     }
     Ok(aggregate)
+}
+
+fn followup_candidate_values(unit: &Value) -> Vec<&Value> {
+    unit.get("followup_candidates")
+        .and_then(Value::as_array)
+        .or_else(|| unit.get("followup_suggestions").and_then(Value::as_array))
+        .map(|items| items.iter().collect())
+        .unwrap_or_default()
+}
+
+fn merge_followup_job_status(run_dir: &Path, followups: &mut [Value]) -> Result<(), ScvError> {
+    let existing_followups =
+        read_jsonl_values(run_dir, "analysis_followup_jobs.jsonl").unwrap_or_default();
+    let analysis_jobs = read_jsonl_values(run_dir, "analysis_jobs.jsonl").unwrap_or_default();
+    for followup in followups {
+        let followup_id = string_field(followup, "followup_job_id", "");
+        if followup_id.is_empty() {
+            continue;
+        }
+        if let Some(job) = analysis_jobs
+            .iter()
+            .find(|job| string_field(job, "job_id", "") == followup_id)
+        {
+            merge_followup_from_analysis_job(followup, job);
+            continue;
+        }
+        if let Some(existing) = existing_followups
+            .iter()
+            .find(|item| string_field(item, "followup_job_id", "") == followup_id)
+        {
+            merge_existing_followup_status(followup, existing);
+        }
+    }
+    Ok(())
+}
+
+fn merge_followup_from_analysis_job(followup: &mut Value, job: &Value) {
+    if let Some(object) = followup.as_object_mut() {
+        object.insert(
+            "status".into(),
+            Value::String(string_field(job, "status", "queued")),
+        );
+        object.insert(
+            "promoted_analysis_job_id".into(),
+            Value::String(string_field(job, "job_id", "")),
+        );
+        copy_optional_string_value(job, object, "result_ref");
+        copy_optional_string_value(job, object, "path");
+    }
+}
+
+fn merge_existing_followup_status(followup: &mut Value, existing: &Value) {
+    let existing_status = string_field(existing, "status", "queued");
+    if existing_status == "queued" {
+        return;
+    }
+    if let Some(object) = followup.as_object_mut() {
+        object.insert("status".into(), Value::String(existing_status));
+        for key in [
+            "blocked_by",
+            "promoted_analysis_job_id",
+            "promotion_error",
+            "path",
+        ] {
+            if let Some(value) = existing.get(key) {
+                object.insert(key.into(), value.clone());
+            }
+        }
+    }
+}
+
+fn followup_status_requires_more_work(followup: &Value) -> bool {
+    !matches!(
+        string_field(followup, "status", "queued").as_str(),
+        "completed" | "resolved" | "skipped"
+    )
 }
 
 fn extend_string_array(value: &Value, key: &str, out: &mut Vec<String>) {
@@ -2060,6 +2898,25 @@ fn unique_push(out: &mut Vec<String>, item: String) {
     let redacted = redact_command_excerpt(&item).as_str().to_string();
     if !redacted.trim().is_empty() && !out.contains(&redacted) {
         out.push(redacted);
+    }
+}
+
+fn copy_optional_string(source: &Value, target: &mut serde_json::Map<String, Value>, key: &str) {
+    if let Some(value) = source.get(key).and_then(Value::as_str) {
+        target.insert(
+            key.into(),
+            Value::String(redact_command_excerpt(value).as_str().to_string()),
+        );
+    }
+}
+
+fn copy_optional_string_value(
+    source: &Value,
+    target: &mut serde_json::Map<String, Value>,
+    key: &str,
+) {
+    if let Some(value) = source.get(key).and_then(Value::as_str) {
+        target.insert(key.into(), Value::String(value.to_string()));
     }
 }
 
@@ -2097,7 +2954,7 @@ fn followup_job_from_relation(index: usize, unit_id: &str, relation: &Value) -> 
         } else {
             "pair-review"
         };
-    json!({
+    let mut job = json!({
         "followup_job_id": format!("FU{index:04}"),
         "kind": followup_kind,
         "status": "queued",
@@ -2107,7 +2964,15 @@ fn followup_job_from_relation(index: usize, unit_id: &str, relation: &Value) -> 
         "relation_kind": redact_command_excerpt(&kind).as_str(),
         "reason": "unit-analysis relation candidate requires cross-slice review",
         "target_repo_commands_executed": false
-    })
+    });
+    if let Some(path) = relation_path_candidate(&from).or_else(|| relation_path_candidate(&to)) {
+        if ensure_repo_relative(&path).is_ok() {
+            if let Some(object) = job.as_object_mut() {
+                object.insert("path".into(), Value::String(path));
+            }
+        }
+    }
+    job
 }
 
 fn update_state_after_import(run_dir: &Path, imported_units: usize) -> Result<(), ScvError> {
@@ -2136,39 +3001,73 @@ fn update_state_after_import(run_dir: &Path, imported_units: usize) -> Result<()
 fn final_report_markdown(map: &Value) -> String {
     format!(
         "# Git-SCV final user report\n\n\
-analysis_stage: final-report-complete\n\n\
-This report is generated from validated unit-analysis imports and analysis_map.json. It is not a malware-absence, install-safety, or run-safety guarantee.\n\n\
-## What This Repository Appears To Do\n\n\
+## 1. Executive Summary\n\n\
+Git-SCV completed the worker-backed analysis map and generated this user-facing report. This is a structured understanding aid, not an installation approval.\n\n\
+## 2. Analysis Status Badge\n\n\
+- analysis_stage: {}\n\
+- map_complete: {}\n\
+- final_report_status: final-report-complete\n\
+- safe_claim_made: false\n\
+- target_repo_commands_executed: false\n\n\
+## 3. Source Acquisition and Fingerprint\n\n\
+- source_fingerprint_hash: {}\n\
+- source validity must be rechecked before any install/build/test/run decision.\n\n\
+## 4. What This Repository Appears To Do\n\n\
 {}\n\n\
-## Slice-Level Understanding\n\n\
+## 5. Major Architecture / Modules\n\n\
 {}\n\n\
-## Major Structure\n\n\
+## 6. Install / Build / Test / Run Entry Points\n\n\
 {}\n\n\
-## Execution Flow Notes\n\n\
+## 7. Execution-Reachable Chains\n\n\
 {}\n\n\
-## Relation and Follow-Up Notes\n\n\
+## 8. Dependency and Package Surfaces\n\n\
+- See dependencies.json, supported_surfaces.json, and architecture.html for package/source-kind details.\n\n\
+## 9. Sensitive / Secret-Like Surfaces\n\n\
+- See sensitive.json and gates.json. Git-SCV does not include sensitive raw content by default.\n\n\
+## 10. Prompt-Injection / Agent Instruction Surfaces\n\n\
+- Target repository instruction files are untrusted analysis subjects, not instructions for Git-SCV or the worker model.\n\n\
+## 11. Worker Analysis Coverage\n\n\
 {}\n\n\
-followup_jobs_count: {}\n\n\
-## Scoped Uncertainty\n\n\
+## 12. Follow-Up Queue and Unresolved Relations\n\n\
+- followup_required: {}\n\
+- followup_jobs_count: {}\n\
+\n\
 {}\n\n\
-## Owner Questions\n\n\
+## 13. Owner Questions\n\n\
 {}\n\n\
-## Pre-Use Checklist\n\n\
+## 14. Pre-Use Checklist\n\n\
 {}\n\n\
-## What Git-SCV Did Not Prove\n\n\
+## 15. What Git-SCV Did Not Prove\n\n\
 - Malware absence\n\
+- Repository safety\n\
 - Install safety\n\
 - Execution safety\n\
-- Semantic truth of model-generated claims\n",
+- Transitive dependency safety\n\
+- Semantic truth of model-generated claims\n\
+\n\
+## Slice-Level Understanding\n\n\
+{}\n\n\
+## Scoped Uncertainty\n\n\
+{}\n",
+        string_field(map, "analysis_stage", "analysis-map-complete"),
+        map.get("map_complete")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        string_field(map, "source_fingerprint_hash", "sha256:see-source-json"),
         string_array_markdown(map, "repo_purpose_candidates"),
-        string_array_markdown(map, "qualitative_digests"),
         string_array_markdown(map, "major_modules"),
         string_array_markdown(map, "execution_flows"),
         string_array_markdown(map, "unresolved_relations"),
+        worker_progress_markdown(map),
+        map.get("followup_required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         number_field(map, "followup_jobs_count"),
-        string_array_markdown(map, "scoped_uncertainty"),
+        value_array_markdown(map, "followup_jobs"),
         string_array_markdown(map, "owner_questions"),
         string_array_markdown(map, "pre_use_checklist"),
+        string_array_markdown(map, "qualitative_digests"),
+        string_array_markdown(map, "scoped_uncertainty"),
     )
 }
 
@@ -2177,6 +3076,85 @@ fn final_report_html(markdown: &str) -> String {
         "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\"><title>Git-SCV final user report</title></head><body><pre>{}</pre></body></html>\n",
         escape_html(markdown)
     )
+}
+
+fn refresh_runtime_architecture_html(run_dir: &Path) -> Result<(), ScvError> {
+    if !run_dir.join("architecture.html").is_file() {
+        return Ok(());
+    }
+    let data = json!({
+        "analysis_state": optional_artifact(run_dir, "analysis_state.json"),
+        "analysis_map": optional_artifact(run_dir, "analysis_map.json"),
+        "architecture_map": optional_artifact(run_dir, "architecture_map.json"),
+        "relation_map": optional_artifact(run_dir, "relation_map.json"),
+        "source_landmarks": optional_artifact(run_dir, "source_landmarks.json"),
+        "visualization_index": optional_artifact(run_dir, "visualization_index.json"),
+        "worker_progress": worker_progress_summary(run_dir),
+        "budget_gate": budget_gate_summary(run_dir),
+        "analysis_jobs": read_jsonl_values(run_dir, "analysis_jobs.jsonl").unwrap_or_default(),
+        "analysis_followup_jobs": read_jsonl_values(run_dir, "analysis_followup_jobs.jsonl").unwrap_or_default(),
+        "final_user_report_exists": run_dir.join("final_user_report.md").is_file(),
+        "safe_claim_made": false,
+        "target_repo_commands_executed": false,
+        "raw_content_included": false
+    });
+    let html = runtime_architecture_html(&data)?;
+    write_text(run_dir, "architecture.html", &html)
+}
+
+fn optional_artifact(run_dir: &Path, name: &str) -> Value {
+    read_artifact(run_dir, name).unwrap_or_else(|_| json!({}))
+}
+
+fn runtime_architecture_html(data: &Value) -> Result<String, ScvError> {
+    let pretty = serde_json::to_string_pretty(data).map_err(|err| {
+        ScvError::Inspect(format!(
+            "runtime architecture html: JSON 직렬화 실패: {err}"
+        ))
+    })?;
+    let state = data.get("analysis_state").unwrap_or(&Value::Null);
+    let map = data.get("analysis_map").unwrap_or(&Value::Null);
+    let progress = data.get("worker_progress").unwrap_or(&Value::Null);
+    let budget = data.get("budget_gate").unwrap_or(&Value::Null);
+    let followups = data
+        .get("analysis_followup_jobs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let followup_rows = followups
+        .iter()
+        .map(|item| {
+            format!(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                escape_html(&string_field(item, "followup_job_id", "")),
+                escape_html(&string_field(item, "status", "")),
+                escape_html(&string_field(item, "kind", "")),
+                escape_html(&string_field(item, "path", ""))
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    Ok(format!(
+        "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'\"><title>Git-SCV Architecture Runtime</title><style>body{{margin:0;background:#f6f7f9;color:#17202f;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.45}}header{{background:#fff;border-bottom:1px solid #d8dee8;padding:18px 22px}}main{{display:grid;gap:12px;padding:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}}section{{background:#fff;border:1px solid #d8dee8;border-radius:8px;padding:14px}}h1{{font-size:22px;margin:0}}h2{{font-size:16px;margin:0 0 10px}}.badge{{display:inline-block;border-radius:999px;background:#eef3f8;padding:4px 8px;margin:4px 4px 0 0}}.warn{{color:#9a5b05}}.bad{{color:#b42318}}.ok{{color:#287a3e}}table{{width:100%;border-collapse:collapse}}td,th{{border-top:1px solid #d8dee8;padding:6px;text-align:left;vertical-align:top}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#fbfcfe;border:1px solid #d8dee8;border-radius:8px;padding:10px;max-height:360px;overflow:auto}}</style></head><body><header><h1>Git-SCV Architecture & Safety Synthesis</h1><div class=\"badge warn\">Runtime architecture view</div><div class=\"badge\">raw content not included</div><div class=\"badge ok\">target_repo_commands_executed=false</div><div class=\"badge ok\">safe_claim_made=false</div></header><main><section><h2>Analysis Status</h2><p><strong>stage:</strong> {}</p><p><strong>final report:</strong> {}</p><p><strong>source:</strong> {}</p></section><section><h2>Worker Progress View</h2><p>primary jobs: {} / follow-up jobs: {}</p><p>completed: {} queued: {} failed: {} blocked: {}</p></section><section><h2>Budget Gate View</h2><p><strong>status:</strong> {}</p><p>paid usage warning: {}</p><p>auth storage read: {}</p></section><section><h2>Follow-Up Queue View</h2><table><thead><tr><th>id</th><th>status</th><th>kind</th><th>path</th></tr></thead><tbody>{}</tbody></table></section><section><h2>Unresolved Relation Explorer</h2><pre>{}</pre></section><section><h2>Synthesis / Final Report Status</h2><p>map_complete: {}</p><p>followup_required: {}</p><p>final_user_report_exists: {}</p></section><section><h2>Architecture Data Snapshot</h2><pre>{}</pre></section></main></body></html>\n",
+        escape_html(&string_field(state, "analysis_stage", "unknown")),
+        escape_html(&string_field(state, "final_report_status", "unknown")),
+        escape_html(&string_field(state, "source_status", "unknown")),
+        number_field(progress, "primary_jobs"),
+        number_field(progress, "followup_jobs"),
+        number_field(progress, "completed"),
+        number_field(progress, "queued"),
+        number_field(progress, "failed"),
+        number_field(progress, "blocked"),
+        escape_html(&string_field(budget, "status", "not-waiting")),
+        budget.get("paid_usage_warning").and_then(Value::as_bool).unwrap_or(false),
+        budget.get("auth_storage_read").and_then(Value::as_bool).unwrap_or(false),
+        followup_rows,
+        escape_html(&string_array_markdown(map, "unresolved_relations")),
+        map.get("map_complete").and_then(Value::as_bool).unwrap_or(false),
+        map.get("followup_required").and_then(Value::as_bool).unwrap_or(false),
+        data.get("final_user_report_exists").and_then(Value::as_bool).unwrap_or(false),
+        escape_html(&pretty)
+    ))
 }
 
 fn read_unit_values(path: &Path) -> Result<Vec<Value>, ScvError> {
@@ -2677,6 +3655,7 @@ fn is_runtime_mutable_artifact(name: &str) -> bool {
             | "unit_analysis.jsonl"
             | "analysis_map.json"
             | "analysis_followup_jobs.jsonl"
+            | "cleanup_manifest.json"
     )
 }
 
@@ -2900,6 +3879,26 @@ fn persist_job_result(run_dir: &Path, job_id: &str, units: &[Value]) -> Result<S
     Ok(format!("analysis/job-results/{name}"))
 }
 
+fn annotate_units_with_job(units: &[Value], job_id: &str) -> Vec<Value> {
+    units
+        .iter()
+        .map(|unit| {
+            let mut unit = unit.clone();
+            if let Some(object) = unit.as_object_mut() {
+                object.insert(
+                    "source_analysis_job_id".into(),
+                    Value::String(job_id.to_string()),
+                );
+                object.insert(
+                    "source_analysis_job_is_followup".into(),
+                    Value::Bool(job_id.starts_with("FU")),
+                );
+            }
+            unit
+        })
+        .collect()
+}
+
 fn append_units(run_dir: &Path, units: &[Value]) -> Result<(), ScvError> {
     let path = run_dir.join("unit_analysis.jsonl");
     safety::assert_inside(run_dir, &path)?;
@@ -3035,11 +4034,23 @@ fn update_state_from_jobs(run_dir: &Path) -> Result<(), ScvError> {
                 "git-scv analysis job claim <run-dir> --agent Codex",
             )
         } else if completed > 0 && runnable_remaining == 0 {
-            (
-                "analysis-map-complete",
-                "ready-to-generate",
-                "git-scv continue <run-dir>",
-            )
+            if read_artifact(run_dir, "analysis_map.json")
+                .ok()
+                .and_then(|map| map.get("map_complete").and_then(Value::as_bool))
+                == Some(false)
+            {
+                (
+                    "analysis-partial",
+                    "blocked-until-followup-complete",
+                    "git-scv analysis job list <run-dir>",
+                )
+            } else {
+                (
+                    "analysis-map-complete",
+                    "ready-to-generate",
+                    "git-scv continue <run-dir>",
+                )
+            }
         } else {
             (
                 "blocked-waiting-for-gate",
@@ -3205,6 +4216,47 @@ fn string_array_markdown(value: &Value, key: &str) -> String {
         .unwrap_or_else(|| "- Not available.".into())
 }
 
+fn worker_progress_markdown(map: &Value) -> String {
+    let progress = map.get("worker_progress").unwrap_or(&Value::Null);
+    let budget = map.get("budget_gate").unwrap_or(&Value::Null);
+    format!(
+        "- total_jobs: {}\n- primary_jobs: {}\n- followup_jobs: {}\n- completed: {}\n- queued: {}\n- failed: {}\n- blocked: {}\n- budget_gate: {}\n- paid_usage_warning: {}\n- target_repo_commands_executed: false",
+        number_field(progress, "total_jobs"),
+        number_field(progress, "primary_jobs"),
+        number_field(progress, "followup_jobs"),
+        number_field(progress, "completed"),
+        number_field(progress, "queued"),
+        number_field(progress, "failed"),
+        number_field(progress, "blocked"),
+        string_field(budget, "status", "not-waiting"),
+        budget
+            .get("paid_usage_warning")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    )
+}
+
+fn value_array_markdown(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            let lines = items
+                .iter()
+                .map(|item| {
+                    serde_json::to_string(item).unwrap_or_else(|_| "unrenderable-json-value".into())
+                })
+                .map(|item| format!("- {}", redact_command_excerpt(&item).as_str()))
+                .collect::<Vec<_>>();
+            if lines.is_empty() {
+                "- Not available.".into()
+            } else {
+                lines.join("\n")
+            }
+        })
+        .unwrap_or_else(|| "- Not available.".into())
+}
+
 fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -3216,4 +4268,269 @@ fn escape_html(value: &str) -> String {
 #[allow(dead_code)]
 fn canonical(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_quick_flow_offers_metadata_selected_and_pinned_snapshot() {
+        let options = quick_flow_options(true);
+        assert_eq!(options[0].flow, QuickFlow::WebMetadataPreflight);
+        assert_eq!(options[1].flow, QuickFlow::WebSelectedPreflight);
+        assert_eq!(options[2].flow, QuickFlow::PinnedSnapshotAnalysis);
+        assert!(options[1].label.contains("selected"));
+        assert!(options[1].description.contains("no worker"));
+    }
+
+    #[test]
+    fn local_quick_flow_keeps_local_paths_separate_from_github_url_choices() {
+        let options = quick_flow_options(false);
+        assert_eq!(options[0].flow, QuickFlow::LocalPreflight);
+        assert_eq!(options[1].flow, QuickFlow::StrictSnapshotReminder);
+        assert_eq!(options[2].flow, QuickFlow::LocalFullWorker);
+    }
+
+    #[test]
+    fn real_worker_auto_budget_defaults_to_sample_gate() {
+        let policy = worker_budget_policy(
+            Path::new("."),
+            WorkerBackend::Codex,
+            WorkerLoopOptions {
+                max_jobs: None,
+                retry_format_errors: 1,
+                worker_delay_ms: 0,
+                max_worker_calls_per_minute: 0,
+                stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: None,
+                continue_percent: None,
+                approve_worker_budget: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(policy.job_limit, Some(3));
+        assert!(policy.wait_for_user_after_limit);
+    }
+
+    #[test]
+    fn fake_worker_auto_budget_is_not_gated() {
+        let policy = worker_budget_policy(
+            Path::new("."),
+            WorkerBackend::Fake,
+            WorkerLoopOptions {
+                max_jobs: None,
+                retry_format_errors: 1,
+                worker_delay_ms: 0,
+                max_worker_calls_per_minute: 0,
+                stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: None,
+                continue_percent: None,
+                approve_worker_budget: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(policy.job_limit, None);
+        assert!(!policy.wait_for_user_after_limit);
+    }
+
+    #[test]
+    fn approved_budget_continue_jobs_sets_non_waiting_limit() {
+        let policy = worker_budget_policy(
+            Path::new("."),
+            WorkerBackend::Claude,
+            WorkerLoopOptions {
+                max_jobs: None,
+                retry_format_errors: 1,
+                worker_delay_ms: 0,
+                max_worker_calls_per_minute: 0,
+                stop_on_worker_error: false,
+                budget_gate: BudgetGate::Auto,
+                sample_jobs: 3,
+                continue_jobs: Some(25),
+                continue_percent: None,
+                approve_worker_budget: true,
+            },
+        )
+        .unwrap();
+        assert_eq!(policy.job_limit, Some(25));
+        assert!(!policy.wait_for_user_after_limit);
+    }
+
+    #[test]
+    fn relation_path_candidate_extracts_supported_node_paths() {
+        assert_eq!(
+            relation_path_candidate("file:src/main.rs"),
+            Some("src/main.rs".into())
+        );
+        assert_eq!(
+            relation_path_candidate("script:package.json#postinstall"),
+            Some("package.json".into())
+        );
+        assert_eq!(
+            relation_path_candidate("manifest:Cargo.toml"),
+            Some("Cargo.toml".into())
+        );
+        assert_eq!(relation_path_candidate("scenario:npm-install"), None);
+        assert_eq!(
+            relation_path_candidate("https://example.invalid/archive.zip"),
+            None
+        );
+    }
+
+    #[test]
+    fn followup_job_from_relation_includes_promotable_path() {
+        let relation = json!({
+            "from": "script:package.json#postinstall",
+            "to": "file:scripts/install.sh",
+            "kind": "calls-command"
+        });
+        let followup = followup_job_from_relation(1, "U0001", &relation);
+        assert_eq!(string_field(&followup, "followup_job_id", ""), "FU0001");
+        assert_eq!(string_field(&followup, "kind", ""), "execution-path-review");
+        assert_eq!(string_field(&followup, "path", ""), "package.json");
+        assert_eq!(
+            string_field(&followup, "target_repo_commands_executed", "missing"),
+            "missing"
+        );
+        assert_eq!(
+            followup
+                .get("target_repo_commands_executed")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn completed_followup_status_no_longer_blocks_map_completion() {
+        let mut followup = json!({
+            "followup_job_id": "FU0001",
+            "status": "queued"
+        });
+        let job = json!({
+            "job_id": "FU0001",
+            "status": "completed",
+            "result_ref": "analysis/job-results/FU0001.jsonl",
+            "path": "package.json"
+        });
+        merge_followup_from_analysis_job(&mut followup, &job);
+        assert_eq!(string_field(&followup, "status", ""), "completed");
+        assert!(!followup_status_requires_more_work(&followup));
+    }
+
+    #[test]
+    fn final_user_report_contains_15_required_sections_and_no_safe_claim() {
+        let map = json!({
+            "analysis_stage": "analysis-map-complete",
+            "map_complete": true,
+            "source_fingerprint_hash": "sha256:test",
+            "repo_purpose_candidates": ["Small JavaScript module"],
+            "major_modules": ["src.js"],
+            "execution_flows": ["No execution flow observed."],
+            "unresolved_relations": [],
+            "worker_progress": {
+                "total_jobs": 1,
+                "primary_jobs": 1,
+                "followup_jobs": 0,
+                "completed": 1,
+                "queued": 0,
+                "failed": 0,
+                "blocked": 0
+            },
+            "budget_gate": {"status": "not-waiting", "paid_usage_warning": false},
+            "followup_required": false,
+            "followup_jobs_count": 0,
+            "followup_jobs": [],
+            "owner_questions": ["Which command is the supported entrypoint?"],
+            "pre_use_checklist": ["Verify source before execution."],
+            "qualitative_digests": ["U0001: Slice shows a small JavaScript module."],
+            "scoped_uncertainty": ["Only one slice was reviewed."]
+        });
+        let report = final_report_markdown(&map);
+        for heading in [
+            "## 1. Executive Summary",
+            "## 2. Analysis Status Badge",
+            "## 3. Source Acquisition and Fingerprint",
+            "## 4. What This Repository Appears To Do",
+            "## 5. Major Architecture / Modules",
+            "## 6. Install / Build / Test / Run Entry Points",
+            "## 7. Execution-Reachable Chains",
+            "## 8. Dependency and Package Surfaces",
+            "## 9. Sensitive / Secret-Like Surfaces",
+            "## 10. Prompt-Injection / Agent Instruction Surfaces",
+            "## 11. Worker Analysis Coverage",
+            "## 12. Follow-Up Queue and Unresolved Relations",
+            "## 13. Owner Questions",
+            "## 14. Pre-Use Checklist",
+            "## 15. What Git-SCV Did Not Prove",
+        ] {
+            assert!(
+                report.contains(heading),
+                "missing heading {heading}\n{report}"
+            );
+        }
+        assert!(report.contains("safe_claim_made: false"), "{report}");
+        assert!(
+            !report.to_lowercase().contains("safe to install"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn runtime_architecture_html_shows_worker_budget_and_followup_views() {
+        let data = json!({
+            "analysis_state": {
+                "analysis_stage": "analysis-partial",
+                "final_report_status": "blocked-until-followup-complete",
+                "source_status": "verified"
+            },
+            "analysis_map": {
+                "map_complete": false,
+                "followup_required": true,
+                "unresolved_relations": ["U0001: file:src.js -> unknown:entrypoint"]
+            },
+            "worker_progress": {
+                "primary_jobs": 1,
+                "followup_jobs": 1,
+                "completed": 1,
+                "queued": 0,
+                "failed": 0,
+                "blocked": 1
+            },
+            "budget_gate": {
+                "status": "not-waiting",
+                "paid_usage_warning": false,
+                "auth_storage_read": false
+            },
+            "analysis_followup_jobs": [
+                {
+                    "followup_job_id": "FU0001",
+                    "status": "blocked",
+                    "kind": "pair-review",
+                    "path": "src.js"
+                }
+            ],
+            "final_user_report_exists": false,
+            "safe_claim_made": false,
+            "target_repo_commands_executed": false
+        });
+        let html = runtime_architecture_html(&data).unwrap();
+        for needle in [
+            "Worker Progress View",
+            "Budget Gate View",
+            "Follow-Up Queue View",
+            "Unresolved Relation Explorer",
+            "Synthesis / Final Report Status",
+            "target_repo_commands_executed=false",
+            "safe_claim_made=false",
+            "raw content not included",
+        ] {
+            assert!(html.contains(needle), "missing {needle}\n{html}");
+        }
+        assert!(!html.contains("<script"), "{html}");
+    }
 }

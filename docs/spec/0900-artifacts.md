@@ -64,7 +64,7 @@
 {
   "schema_version": "1",
   "run_id": "scv-20260612T120003Z",
-  "tool": { "name": "git-scv", "version": "0.3.3" },
+  "tool": { "name": "git-scv", "version": "0.3.4" },
   "command": {
     "program": "git-scv",
     "subcommand": "inspect",
